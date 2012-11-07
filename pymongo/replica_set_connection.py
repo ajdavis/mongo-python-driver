@@ -1185,6 +1185,7 @@ class ReplicaSetConnection(common.BaseObject):
         if tag_sets != [{}]:
             msg += " and tags " + repr(tag_sets)
 
+        msg = ', '.join(errors)
         raise AutoReconnect(msg, errors)
 
     def start_request(self):
