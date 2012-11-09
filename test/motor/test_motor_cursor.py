@@ -68,6 +68,7 @@ class MotorCursorTest(MotorTest):
         cursor = coll.find({}, {'_id': 1}).sort([('_id', pymongo.ASCENDING)])
         yield AssertEqual({'_id': 0}, cursor.next_object)
         self.assertTrue(cursor.alive)
+        self.assertTrue(cursor.cursor_id)
 
         # Dereferencing the cursor eventually closes it on the server; yielding
         # clears the engine Runner's reference to the cursor.

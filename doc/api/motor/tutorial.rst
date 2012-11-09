@@ -387,10 +387,9 @@ at once, get one document at a time with :meth:`~motor.MotorCursor.next_object`:
   >>> @gen.engine
   ... def do_find():
   ...     cursor = db.test_collection.find({'i': {'$lt': 5}})
-  ...     document = yield motor.Op(cursor.next_object)
-  ...     while document:
-  ...         print document
+  ...     while cursor.alive:
   ...         document = yield motor.Op(cursor.next_object)
+  ...         print document
   ...     IOLoop.instance().stop()
   ...
   >>> do_find()
@@ -410,10 +409,9 @@ You can apply a sort, limit, or skip to a query before you begin iterating:
   ...     cursor = db.test_collection.find({'i': {'$lt': 5}})
   ...     # Modify the query before iterating
   ...     cursor.sort([('i', pymongo.DESCENDING)]).limit(2).skip(2)
-  ...     document = yield motor.Op(cursor.next_object)
-  ...     while document:
-  ...         print document
+  ...     while cursor.alive:
   ...         document = yield motor.Op(cursor.next_object)
+  ...         print document
   ...     IOLoop.instance().stop()
   ...
   >>> do_find()

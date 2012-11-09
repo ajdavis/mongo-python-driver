@@ -85,17 +85,14 @@ class MotorCollectionTest(MotorTest):
         ).batch_size(5)
 
         results = []
-        while True:
+        while cursor.alive:
             doc = yield motor.Op(cursor.next_object)
-            if doc:
-                results.append(doc['_id'])
-                if doc['_id'] < 10:
-                    self.assertEqual(
-                        1 + self.open_cursors,
-                        self.get_open_cursors()
-                    )
-            else:
-                break
+            results.append(doc['_id'])
+            if doc['_id'] < 10:
+                self.assertEqual(
+                    1 + self.open_cursors,
+                    self.get_open_cursors()
+                )
 
         self.assertEqual(range(14), results)
         self.assertEqual(

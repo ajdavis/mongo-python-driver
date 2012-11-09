@@ -91,6 +91,8 @@ class MotorTestSecondaryConnection(
             read_preference=ReadPreference.SECONDARY
         ).open_sync().is_primary)
 
+        # TODO: update according to recent test_ha changes
+
         for kwargs in [
             {'read_preference': ReadPreference.PRIMARY_PREFERRED},
             {'read_preference': ReadPreference.SECONDARY},
@@ -340,11 +342,8 @@ class MotorTestReadWithFailover(
         yield gen.Task(loop.add_timeout, time.time() + 2)
 
         # Primary failure shouldn't interrupt the cursor
-        while True:
-            result = yield motor.Op(cursor.next_object)
-            if not result:
-                # Complete
-                break
+        while cursor.alive:
+            yield motor.Op(cursor.next_object)
 
         self.assertEqual(10, cursor.delegate._Cursor__retrieved)
 

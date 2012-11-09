@@ -54,8 +54,6 @@ __all__ = [
 # TODO: ensure we're doing
 #   timeouts as efficiently as possible, test performance hit with timeouts
 #   from registering and cancelling timeouts
-# TODO: is while cursor.alive or while True the right way to iterate with
-#   gen.engine and next_object()?
 # TODO: document, smugly, that Motor has configurable IOLoops
 # TODO: test cross-host copydb
 # TODO: perhaps remove versionchanged Sphinx annotations from proxied methods,
@@ -1170,10 +1168,9 @@ class MotorCursor(MotorBase):
           ...     yield motor.Op(collection.insert,
           ...         [{'_id': i} for i in range(5)])
           ...     cursor = collection.find().sort([('_id', 1)])
-          ...     doc = yield motor.Op(cursor.next_object)
-          ...     while doc:
-          ...         sys.stdout.write(str(doc['_id']) + ', ')
+          ...     while cursor.alive:
           ...         doc = yield motor.Op(cursor.next_object)
+          ...         sys.stdout.write(str(doc['_id']) + ', ')
           ...     print 'done'
           ...     IOLoop.instance().stop()
           ...
