@@ -58,6 +58,23 @@ can start it like so:
 
 .. _MongoDB Tutorial: http://api.mongodb.org/wiki/current/Tutorial.html
 
+Object Hierarchy
+----------------
+Motor, like PyMongo, represents data with a 4-level object hierarchy:
+
+* :class:`~motor.MotorConnection` / :class:`~motor.MotorReplicaSetConnection`:
+  represents a mongod process, or a cluster of them. You explicitly create one
+  of these connection objects, connect it to a running mongod or mongods, and
+  use it for the lifetime of your application.
+* :class:`~motor.MotorDatabase`: Each mongod has a set of databases (distinct
+  sets of data files on disk). You can get a reference to a database from a
+  connection.
+* :class:`~motor.MotorCollection`: A database has a set of collections, which
+  contain documents; you get a reference to a collection from a database.
+* :class:`~motor.MotorCursor`: Executing :meth:`~motor.MotorCollection.find` on
+  a :class:`~motor.MotorCollection` gets a :class:`~motor.MotorCursor`, which
+  represents the set of documents matching a query.
+
 Making a Connection
 -------------------
 You typically create a single instance of either :class:`~motor.MotorConnection`
@@ -72,7 +89,7 @@ before any other operations on it:
 
   >>> connection = motor.MotorConnection().open_sync()
 
-This connects to a ``mongod`` listening on the default host and port. We can
+This connects to a ``mongod`` listening on the default host and port. You can
 specify the host and port like:
 
 .. doctest:: before-inserting-2000-docs
@@ -542,3 +559,16 @@ Many commands have special helper methods, such as
 the basic :meth:`command` method.
 
 .. mongodoc:: commands
+
+Further Reading
+---------------
+The handful of classes and methods introduced here are sufficient for daily
+tasks. The API documentation for :class:`~motor.MotorConnection`,
+:class:`~motor.MotorReplicaSetConnection`, :class:`~motor.MotorDatabase`,
+:class:`~motor.MotorCollection`, and :class:`~motor.MotorCursor` provides a
+reference to Motor's complete feature set.
+
+Learning to use the MongoDB driver is just the beginning, of course. For
+in-depth instruction in MongoDB itself, see `The MongoDB Manual`_.
+
+.. _The MongoDB Manual: http://docs.mongodb.org/manual/
