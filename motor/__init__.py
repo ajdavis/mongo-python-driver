@@ -51,10 +51,9 @@ __all__ = [
     'WaitAllOps'
 ]
 
-# TODO: document that default timeout is None, ensure we're doing
+# TODO: ensure we're doing
 #   timeouts as efficiently as possible, test performance hit with timeouts
 #   from registering and cancelling timeouts
-# TODO: examine & document what connection and network timeouts mean here
 # TODO: is while cursor.alive or while True the right way to iterate with
 #   gen.engine and next_object()?
 # TODO: document, smugly, that Motor has configurable IOLoops

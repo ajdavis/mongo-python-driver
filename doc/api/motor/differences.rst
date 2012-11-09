@@ -186,6 +186,37 @@ You can override this behavior and do unacknowledged writes by passing
 
 .. seealso:: :ref:`generator-interface`
 
+Timeouts
+--------
+
+In PyMongo, you can set a network timeout which causes an
+:exc:`~pymongo.errors.AutoReconnect` exception if an operation does not complete
+in time::
+
+    db = Connection(socketTimeoutMS=500).test
+    try:
+        user = db.users.find_one({'name': 'Jesse'})
+        print user
+    except AutoReconnect:
+        print 'timed out'
+
+:class:`~motor.MotorConnection` and :class:`~motor.MotorReplicaSetConnection`
+support the same options. The exception isn't raised, instead it's passed to
+the callback as the ``error`` parameter, and the ``result`` parameter will be
+``None``. Code using `tornado.gen`_ ends up looking very similar to the
+PyMongo code::
+
+    @gen.engine
+    def f():
+        try:
+            user = yield motor.Op(db.users.find_one, {'name': 'Jesse'})
+            print user
+        except AutoReconnect:
+            print 'timed out'
+
+As in PyMongo, the default ``connectTimeoutMS`` is 20 seconds, and the default
+``socketTimeoutMS`` is no timeout.
+
 Requests
 --------
 
