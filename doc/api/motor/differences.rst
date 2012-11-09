@@ -232,7 +232,7 @@ Motor ignores the ``auto_start_request`` parameter to
 Threading and forking
 ---------------------
 
-Multithreading and forking are not supported; Motor is intended to be part of
+Multithreading and forking are not supported; Motor is intended to be used in
 a single-threaded Tornado application.
 
 Minor differences
