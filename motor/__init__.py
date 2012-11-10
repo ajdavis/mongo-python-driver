@@ -1141,7 +1141,6 @@ class MotorCursor(MotorBase):
         self.started = True
         self._refresh(callback=callback)
 
-    @gen.engine
     def next_object(self, callback):
         """Asynchronously retrieve the next document in the result set,
         fetching a batch of results from the server if necessary.
@@ -1183,41 +1182,40 @@ class MotorCursor(MotorBase):
         # TODO: prevent concurrent uses of this cursor, as IOStream does, and
         #   document that and how to avoid it.
         check_callable(callback, required=True)
-        # TODO: simplify, review, comment
-
-        doc, error = None, None
         if not self.alive:
-            error = StopIteration()
+            callback(None, StopIteration())
+            return
 
-        elif self.buffer_size > 0:
-            try:
+        if self.delegate._Cursor__empty:
+            # Special case: limit of 0
+            callback(None, None)
+        else:
+            doc, error = None, None
+            if self.buffer_size > 0:
                 doc = self.delegate.next()
-            except StopIteration:
-                # Special case: limit is 0.
-                doc = None
-                self.close()
 
-        if self.buffer_size == 0 and self.alive:
-            # We're about to return doc, and the caller is going to continue
-            # a 'while cursor.alive' loop, so we need to determine first if
-            # we're really alive by sending the server a getMore.
-            try:
-                yield gen.Task(self._get_more)
+            if self.buffer_size == 0 and self.alive:
+                # We're about to return doc, and the caller is going to continue
+                # a 'while cursor.alive' loop, so we need to determine first if
+                # we're really alive by sending the server a getMore.
+                def next_object_got_more(batch_size, error):
+                    if doc is not None:
+                        callback(doc, None)
+                    elif self.buffer_size:
+                        # This was the first fetch, and it had results
+                        callback(self.delegate.next(), None)
+                    else:
+                        # Empty result set, e.g. a query that matched nothing
+                        # TODO: always right?
+                        callback(None, StopIteration())
 
-                if not doc:
-                    try:
-                        doc = self.delegate.next()
-                    except StopIteration:
-                        # Special case: limit is 0.
-                        doc = None
+                    if error:
                         self.close()
-            except Exception, e:
-                self.close()
-                # TODO: what are the implications of forgetting this doc?
-                doc = None
-                error = e
+                        callback(None, error)
 
-        callback(doc, error)
+                self._get_more(next_object_got_more)
+            else:
+                callback(doc, error)
 
     def each(self, callback):
         """Iterates over all the documents for this cursor.
