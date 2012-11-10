@@ -1081,7 +1081,6 @@ class MotorCursor(MotorBase):
     explain       = AsyncRead()
     _refresh      = AsyncRead()
     close         = AsyncCommand()
-    alive         = ReadOnlyDelegateProperty()
     cursor_id     = ReadOnlyDelegateProperty()
     batch_size    = MotorCursorChainingMethod()
     add_option    = MotorCursorChainingMethod()
@@ -1092,6 +1091,10 @@ class MotorCursor(MotorBase):
     sort          = MotorCursorChainingMethod()
     hint          = MotorCursorChainingMethod()
     where         = MotorCursorChainingMethod()
+
+    @property
+    def alive(self):
+        return bool(self.buffer_size or self.cursor_id or not self.started)
 
     def __init__(self, cursor, collection):
         """You will not usually construct a MotorCursor yourself, but acquire
@@ -1129,7 +1132,7 @@ class MotorCursor(MotorBase):
         :Parameters:
          - `callback`:    function taking parameters (batch_size, error)
         """
-        if self.started and not self.alive:
+        if not self.alive:
             raise pymongo.errors.InvalidOperation(
                 "Can't call get_more() on a MotorCursor that has been"
                 " exhausted or killed."
@@ -1138,6 +1141,7 @@ class MotorCursor(MotorBase):
         self.started = True
         self._refresh(callback=callback)
 
+    @gen.engine
     def next_object(self, callback):
         """Asynchronously retrieve the next document in the result set,
         fetching a batch of results from the server if necessary.
@@ -1179,10 +1183,13 @@ class MotorCursor(MotorBase):
         # TODO: prevent concurrent uses of this cursor, as IOStream does, and
         #   document that and how to avoid it.
         check_callable(callback, required=True)
-        add_callback = self.get_io_loop().add_callback
-
         # TODO: simplify, review, comment
-        if self.buffer_size > 0:
+
+        doc, error = None, None
+        if not self.alive:
+            error = StopIteration()
+
+        elif self.buffer_size > 0:
             try:
                 doc = self.delegate.next()
             except StopIteration:
@@ -1190,20 +1197,27 @@ class MotorCursor(MotorBase):
                 doc = None
                 self.close()
 
-            # Schedule callback on IOLoop. Calling this callback directly
-            # seems to lead to circular references to MotorCursor.
-            add_callback(functools.partial(callback, doc, None))
-        elif self.alive and (self.cursor_id or not self.started):
-            def got_more(batch_size, error):
-                if error:
-                    callback(None, error)
-                else:
-                    self.next_object(callback)
+        if self.buffer_size == 0 and self.alive:
+            # We're about to return doc, and the caller is going to continue
+            # a 'while cursor.alive' loop, so we need to determine first if
+            # we're really alive by sending the server a getMore.
+            try:
+                yield gen.Task(self._get_more)
 
-            self._get_more(got_more)
-        else:
-            # Complete
-            add_callback(functools.partial(callback, None, None))
+                if not doc:
+                    try:
+                        doc = self.delegate.next()
+                    except StopIteration:
+                        # Special case: limit is 0.
+                        doc = None
+                        self.close()
+            except Exception, e:
+                self.close()
+                # TODO: what are the implications of forgetting this doc?
+                doc = None
+                error = e
+
+        callback(doc, error)
 
     def each(self, callback):
         """Iterates over all the documents for this cursor.
@@ -1280,7 +1294,6 @@ class MotorCursor(MotorBase):
             # Complete
             add_callback(functools.partial(callback, None, None))
 
-
     def to_list(self, callback):
         """Get a list of documents.
 
@@ -1321,7 +1334,7 @@ class MotorCursor(MotorBase):
             the_list.extend(self.delegate._Cursor__data)
             self.delegate._Cursor__data.clear()
 
-        if self.alive and (self.cursor_id or not self.started):
+        if not self.delegate._Cursor__killed and (self.cursor_id or not self.started):
             self._get_more(callback=functools.partial(
                 self._to_list_got_more, callback, the_list))
         else:
@@ -1427,8 +1440,8 @@ class MotorCursor(MotorBase):
             return self[self.delegate._Cursor__skip+index:].limit(-1)
 
     def __del__(self):
-        if self.alive and self.cursor_id:
-            self.close()
+        print 'MotorCursor.__del__, alive', self.alive, 'cursor_id', self.cursor_id
+        self.close()
 
 
 # TODO: doc not really a file-like object
