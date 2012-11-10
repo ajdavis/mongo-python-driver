@@ -1430,17 +1430,20 @@ class MotorCursor(MotorBase):
             raise pymongo.errors.InvalidOperation("MotorCursor already started")
 
         if isinstance(index, slice):
-             return MotorCursor(self.delegate[index], self.collection)
+            # Slicing a cursor does no I/O - it just sets skip and limit - so
+            # we can slice it immediately.
+            self.delegate[index]
+            return self
         else:
             if not isinstance(index, (int, long)):
                 raise TypeError("index %r cannot be applied to MotorCursor "
                                 "instances" % index)
+
             # Get one document, force hard limit of 1 so server closes cursor
             # immediately
             return self[self.delegate._Cursor__skip+index:].limit(-1)
 
     def __del__(self):
-        print 'MotorCursor.__del__, alive', self.alive, 'cursor_id', self.cursor_id
         self.close()
 
 
