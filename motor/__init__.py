@@ -1143,7 +1143,12 @@ class MotorCursor(MotorBase):
 
     def next_object(self, callback):
         """Asynchronously retrieve the next document in the result set,
-        fetching a batch of results from the server if necessary.
+        fetching a batch of results from the server if necessary. After the
+        last document is retrieved, :attr:`alive` is ``False``.
+
+        If :meth:`next_object` is called when no documents remain, the callback
+        receives ``None``. Normally, the callback will never receive ``None``
+        in a loop like this one:
 
         .. testsetup:: next_object
 
@@ -1176,6 +1181,33 @@ class MotorCursor(MotorBase):
           >>> IOLoop.instance().start()
           0, 1, 2, 3, 4, done
 
+        However, if the initial :meth:`~motor.MotorCollection.find` matches no
+        documents, then :attr:`alive` is ``True`` at first, and the first call
+        to :meth:`next_object` receives ``None``, after which :attr:`alive` is
+        set to ``False``:
+
+        .. doctest:: next_object
+
+          >>> @gen.engine
+          ... def f():
+          ...     yield motor.Op(collection.remove)
+          ...     cursor = collection.find()
+          ...     while cursor.alive:
+          ...         doc = yield motor.Op(cursor.next_object)
+          ...         sys.stdout.write(str(doc) + ', ')
+          ...     print 'done'
+          ...     IOLoop.instance().stop()
+          ...
+          >>> f()
+          >>> IOLoop.instance().start()
+          None, done
+
+        In the examples above there is no need to call :meth:`close`,
+        because the cursor is iterated to completion. If you cancel iteration
+        before exhausting the cursor, call :meth:`close` to immediately free
+        server resources. Otherwise, the cursor will eventually be closed
+        on the server when the garbage-collector deletes the object.
+
         :Parameters:
          - `callback`: function taking (document, error)
         """
@@ -1183,11 +1215,13 @@ class MotorCursor(MotorBase):
         #   document that and how to avoid it.
         check_callable(callback, required=True)
         if not self.alive:
-            callback(None, StopIteration())
+            callback(None, None)
             return
 
         if self.delegate._Cursor__empty:
-            # Special case: limit of 0
+            # Special case: limit of 0. callback(None, StopIteration()) is
+            # tempting here, but if uncaught it will cause a calling coroutine
+            # to exit early, and silently, causing difficult bugs.
             callback(None, None)
         else:
             doc, error = None, None
@@ -1199,19 +1233,21 @@ class MotorCursor(MotorBase):
                 # a 'while cursor.alive' loop, so we need to determine first if
                 # we're really alive by sending the server a getMore.
                 def next_object_got_more(batch_size, error):
-                    if doc is not None:
+                    # An odd consequence of this early getMore: if there's an
+                    # error we lose the current doc.
+                    if error:
+                        self.close()
+                        callback(None, error)
+                    elif doc is not None:
                         callback(doc, None)
                     elif self.buffer_size:
                         # This was the first fetch, and it had results
                         callback(self.delegate.next(), None)
                     else:
-                        # Empty result set, e.g. a query that matched nothing
-                        # TODO: always right?
-                        callback(None, StopIteration())
-
-                    if error:
-                        self.close()
-                        callback(None, error)
+                        # Empty result set, e.g. a query that matched nothing.
+                        # Again, StopIteration is tempting but dangerous, just
+                        # return None.
+                        callback(None, None)
 
                 self._get_more(next_object_got_more)
             else:

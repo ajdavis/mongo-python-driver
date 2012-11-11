@@ -55,6 +55,16 @@ class MotorCursorTest(MotorTest):
     @async_test_engine()
     def test_next_object(self):
         coll = self.motor_connection(host, port).test.test_collection
+
+        # Empty results
+        cursor = coll.find({'foo':'bar'})
+        self.assertTrue(cursor.alive)
+        self.assertEqual(None, cursor.cursor_id)
+        # First fetch
+        yield AssertEqual(None, cursor.next_object)
+        self.assertFalse(cursor.alive)
+        self.assertEqual(0, cursor.cursor_id)
+
         cursor = coll.find({}, {'_id': 1}).sort([('_id', pymongo.ASCENDING)])
         yield AssertEqual({'_id': 0}, cursor.next_object)
         self.assertTrue(cursor.alive)
@@ -296,6 +306,52 @@ class MotorCursorTest(MotorTest):
             lambda: sorted(results))
 
         ioloop.IOLoop.instance().start()
+
+    @async_test_engine()
+    def test_alive(self):
+        # Ensure cursor.alive is False after iteration completes
+        cx = self.motor_connection(host, port)
+        db = cx.test
+        yield motor.Op(db.drop_collection, "test")
+        yield motor.Op(
+            db.test.insert, [{'_id': i} for i in range(10)], safe=True)
+
+        # Get 10 docs in one fetch
+        cursor = db.test.find().sort([('_id', 1)])
+        self.assertTrue(cursor.alive)
+        i = 0
+        while cursor.alive:
+            self.assertEqual(i, (yield motor.Op(cursor.next_object))['_id'])
+            i += 1
+
+        self.assertEqual(10, i)
+        self.assertEqual(0, cursor.cursor_id)
+        yield AssertEqual(None, cursor.next_object)
+
+        # Get them in two fetches
+        cursor = db.test.find().sort([('_id', 1)]).batch_size(6)
+        i = 0
+        while cursor.alive:
+            self.assertEqual(i, (yield motor.Op(cursor.next_object))['_id'])
+            i += 1
+
+        self.assertEqual(10, i)
+        self.assertEqual(0, cursor.cursor_id)
+        yield AssertEqual(None, cursor.next_object)
+
+        # Edge case: get them in two fetches, then there's a third fetch that
+        # has no docs.
+        cursor = db.test.find().sort([('_id', 1)]).batch_size(5)
+        i = 0
+        while i < 10:
+            self.assertEqual(i, (yield motor.Op(cursor.next_object))['_id'])
+            i += 1
+
+        self.assertEqual(10, i)
+        self.assertEqual(0, cursor.cursor_id)
+        self.assertFalse(cursor.alive)
+        yield AssertEqual(None, cursor.next_object)
+
 
 if __name__ == '__main__':
     unittest.main()
