@@ -260,7 +260,6 @@ class MotorCollectionTest(MotorTest):
 
     @async_test_engine()
     def test_find_one(self):
-        cx = self.motor_connection(host, port)
         yield AssertEqual(
             {'_id': 1, 's': hex(1)},
             self.motor_connection(host, port).test.test_collection.find_one,
