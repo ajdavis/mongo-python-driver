@@ -1298,8 +1298,11 @@ class MotorCursor(MotorBase):
 
         >>> collection.find().limit(some_number).to_list(callback)
 
-        `to_list` returns immediately, and `callback` is executed
+        ``to_list`` returns immediately, and ``callback`` is executed
         asynchronously with the list of documents.
+
+        After ``to_list`` completes, :attr:`alive` is ``False`` and the cursor
+        is closed.
 
         :Parameters:
          - `callback`: function taking (documents, error)
