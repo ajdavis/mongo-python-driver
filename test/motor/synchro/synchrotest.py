@@ -99,8 +99,10 @@ excluded_tests = [
     'TestGridfs.test_missing_length_iter',
     'TestGridFile.test_iterator',
 
-    # No context-manager protocol for MotorGridIn
+    # No context-manager protocol for MotorGridIn, and can't set attrs
     'TestGridFile.test_context_manager',
+    'TestGridFile.test_grid_in_default_opts',
+    'TestGridFile.test_set_after_close',
 ]
 
 
