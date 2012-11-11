@@ -1173,12 +1173,6 @@ class MotorCursor(MotorBase):
           >>> IOLoop.instance().start()
           0, 1, 2, 3, 4, done
 
-        In the example above there is no need to call :meth:`close`,
-        because the cursor is iterated to completion. If you cancel iteration
-        before exhausting the cursor, call :meth:`close` to immediately free
-        server resources. Otherwise, the cursor will eventually close itself
-        on the server when the garbage-collector deletes the object.
-
         :Parameters:
          - `callback`: function taking (document, error)
         """
@@ -1217,11 +1211,6 @@ class MotorCursor(MotorBase):
         `each` returns immediately, and `callback` is executed asynchronously
         for each document. `callback` is passed ``(None, None)`` when iteration
         is complete.
-
-        Return ``False`` from the callback to stop iteration. If you stop
-        iteration you should call :meth:`close` to immediately free server
-        resources for the cursor. It is unnecessary to close a cursor after
-        iterating it completely.
 
         .. testsetup:: each
 
