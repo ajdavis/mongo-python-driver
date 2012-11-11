@@ -285,11 +285,11 @@ class MotorCollectionTest(MotorTest):
 
         cx = self.motor_connection(host, port)
 
-        # This find_one() takes half a second
+        # This find_one() takes 5 seconds
         loop.add_timeout(
             time.time() + 0.1,
             lambda: cx.test.test_collection.find_one(
-                {'_id': 1, '$where': delay(1)},
+                {'_id': 1, '$where': delay(5)},
                 fields={'s': True, '_id': False},
                 callback=callback
             )
@@ -308,7 +308,8 @@ class MotorCollectionTest(MotorTest):
         # Results were appended in order 2, 1
         self.assertEventuallyEqual(
             [{'s': hex(s)} for s in (2, 1)],
-            lambda: results
+            lambda: results,
+            timeout_sec=6
         )
 
         ioloop.IOLoop.instance().start()
