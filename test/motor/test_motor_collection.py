@@ -62,6 +62,8 @@ class MotorCollectionTest(MotorTest):
             yield motor.Op(coll.remove)
             yield AssertEqual(None, coll.find_one, {'_id':'xyzzy'})
 
+    # TODO: move the next few tests into test_motor_cursor and refactor to
+    #   avoid redundancy
     @async_test_engine()
     def test_next_object(self):
         # 1. Open a connection.
