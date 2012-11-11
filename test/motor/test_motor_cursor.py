@@ -101,15 +101,18 @@ class MotorCursorTest(MotorTest):
     def test_limit_zero(self):
         # Limit of 0 is a weird case that PyMongo handles specially, make sure
         # Motor does too. cursor.limit(0) means "remove limit", but cursor[:0]
-        # sets a limit of 0.
+        # or cursor[5:5] sets the cursor to "empty".
         coll = self.motor_connection(host, port).test.test_collection
 
         # Make sure our setup code made some documents
         results = yield motor.Op(coll.find().to_list)
         self.assertTrue(len(results) > 0)
         yield AssertEqual(None, coll.find()[:0].next_object)
+        yield AssertEqual(None, coll.find()[5:5].next_object)
         yield AssertEqual(None, coll.find()[:0].each)
+        yield AssertEqual(None, coll.find()[5:5].each)
         yield AssertEqual([], coll.find()[:0].to_list)
+        yield AssertEqual([], coll.find()[5:5].to_list)
         self.wait_for_cursors()
 
     def test_cursor_close(self):
