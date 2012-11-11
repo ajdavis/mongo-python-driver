@@ -406,6 +406,7 @@ class Cursor(Synchro):
 
     rewind                     = WrapOutgoing()
     clone                      = WrapOutgoing()
+    alive                      = SynchroProperty()
 
     def __init__(self, motor_cursor):
         self.delegate = motor_cursor
