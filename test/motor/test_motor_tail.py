@@ -34,7 +34,9 @@ class MotorTailTest(MotorTest):
     def setUp(self):
         super(MotorTailTest, self).setUp()
         self.sync_db.capped.drop()
-        self.sync_db.create_collection('capped', capped=True, size=1000)
+        # autoIndexId catches test bugs that try to insert duplicate _id's
+        self.sync_db.create_collection(
+            'capped', capped=True, size=1000, autoIndexId=True)
 
         self.sync_db.uncapped.drop()
         self.sync_db.uncapped.insert({}, safe=True)
