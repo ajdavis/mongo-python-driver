@@ -1090,10 +1090,6 @@ class MotorCursor(MotorBase):
     hint          = MotorCursorChainingMethod()
     where         = MotorCursorChainingMethod()
 
-    @property
-    def alive(self):
-        return bool(self.buffer_size or self.cursor_id or not self.started)
-
     def __init__(self, cursor, collection):
         """You will not usually construct a MotorCursor yourself, but acquire
         one from :meth:`MotorCollection.find`.
@@ -1420,6 +1416,10 @@ class MotorCursor(MotorBase):
     def buffer_size(self):
         # TODO: expose so we don't have to use double-underscore hack
         return len(self.delegate._Cursor__data)
+
+    @property
+    def alive(self):
+        return bool(self.buffer_size or self.cursor_id or not self.started)
 
     def __getitem__(self, index):
         """Get a slice of documents from this cursor.
