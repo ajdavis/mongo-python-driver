@@ -443,7 +443,7 @@ a collection, or the number of documents that match a query:
   999 documents where i > 1000
 
 :meth:`~motor.MotorCursor.count` uses the *count command* internally; we'll
-commands_ below.
+cover commands_ below.
 
 .. seealso:: `Count command <http://www.mongodb.org/display/DOCS/Aggregation#Aggregation-Count>`_
 
