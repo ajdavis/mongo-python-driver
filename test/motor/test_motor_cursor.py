@@ -15,8 +15,6 @@
 """Test Motor, an asynchronous driver for MongoDB and Tornado."""
 
 import unittest
-import time
-import sys
 
 import motor
 if not motor.requirements_satisfied:
@@ -63,16 +61,9 @@ class MotorCursorTest(MotorTest):
 
         # Dereferencing the cursor eventually closes it on the server; yielding
         # clears the engine Runner's reference to the cursor.
-        loop = ioloop.IOLoop.instance()
-        yield gen.Task(loop.add_callback)
         del cursor
-
-        while self.get_open_cursors() > self.open_cursors:
-            if 'PyPy' in sys.version:
-                import gc
-                gc.collect()
-
-            yield gen.Task(loop.add_timeout, time.time() + 0.5)
+        yield gen.Task(ioloop.IOLoop.instance().add_callback)
+        self.wait_for_cursors()
 
     def test_each(self):
         coll = self.motor_connection(host, port).test.test_collection
