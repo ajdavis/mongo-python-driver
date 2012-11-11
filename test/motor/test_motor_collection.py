@@ -87,7 +87,6 @@ class MotorCollectionTest(MotorTest):
         results = []
         while True:
             doc = yield motor.Op(cursor.next_object)
-
             if doc:
                 results.append(doc['_id'])
                 if doc['_id'] < 10:
