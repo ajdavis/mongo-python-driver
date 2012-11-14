@@ -111,7 +111,7 @@ class MotorConnectionTest(MotorTest):
         yield motor.Op(cx.test.test_collection.insert,
             {'_id': 'test_open_sync'})
         doc = yield motor.Op(
-            cx.test.test_collection.find({'_id': 'test_open_sync'}).next_object)
+            cx.test.test_collection.find_one, {'_id': 'test_open_sync'})
         self.assertEqual('test_open_sync', doc['_id'])
 
     def test_open_sync_custom_io_loop(self):
@@ -131,11 +131,11 @@ class MotorConnectionTest(MotorTest):
             # Custom loop works?
             yield AssertEqual(
                 {'_id': 17, 's': hex(17)},
-                cx.test.test_collection.find({'_id': 17}).next_object)
+                cx.test.test_collection.find_one, {'_id': 17})
 
             yield AssertEqual(
                 {'_id': 37, 's': hex(37)},
-                cx.test.test_collection.find({'_id': 37}).next_object)
+                cx.test.test_collection.find_one, {'_id': 37})
 
         test(self)
 
@@ -154,7 +154,7 @@ class MotorConnectionTest(MotorTest):
             yield AssertEqual(cx, cx.open)
             self.assertTrue(cx.connected)
             doc = yield motor.Op(
-                cx.test.test_collection.find({'_id': 17}).next_object)
+                cx.test.test_collection.find_one, {'_id': 17})
             self.assertEqual({'_id': 17, 's': hex(17)}, doc)
 
         test(self)

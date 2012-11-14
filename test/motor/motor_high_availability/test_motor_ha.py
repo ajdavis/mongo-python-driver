@@ -162,7 +162,7 @@ class MotorTestPassiveAndHidden(
             db.read_preference = mode
             for _ in xrange(10):
                 cursor = db.test.find()
-                yield motor.Op(cursor.next_object)
+                yield cursor.fetch_next
                 self.assertTrue(
                     cursor.delegate._Cursor__connection_id in passives)
                 self.assertTrue(
@@ -174,7 +174,7 @@ class MotorTestPassiveAndHidden(
 
         for _ in xrange(10):
             cursor = db.test.find()
-            yield motor.Op(cursor.next_object)
+            yield cursor.fetch_next
             self.assertEqual(
                 cursor.delegate._Cursor__connection_id, self.c.primary)
 
@@ -336,15 +336,15 @@ class MotorTestReadWithFailover(
 
         db.read_preference = ReadPreference.SECONDARY
         cursor = db.test.find().batch_size(5)
-        yield motor.Op(cursor.next_object)
+        yield cursor.fetch_next
         self.assertEqual(5, cursor.delegate._Cursor__retrieved)
+        for i in range(5):
+            cursor.next_object()
         ha_tools.kill_primary()
         yield gen.Task(loop.add_timeout, time.time() + 2)
 
         # Primary failure shouldn't interrupt the cursor
-        while cursor.alive:
-            yield motor.Op(cursor.next_object)
-
+        yield cursor.fetch_next
         self.assertEqual(10, cursor.delegate._Cursor__retrieved)
 
     def tearDown(self):
@@ -448,12 +448,7 @@ class MotorTestReadPreference(
 
             cursor = db.test.find()
             try:
-                try:
-                    yield motor.Op(cursor.next_object)
-                except StopIteration:
-                    # No documents in collection, that's fine
-                    pass
-
+                yield cursor.fetch_next
                 callback(cursor.delegate._Cursor__connection_id)
             except AutoReconnect:
                 callback(None)

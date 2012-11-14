@@ -1044,7 +1044,7 @@ class MotorCollection(MotorBase):
         """
         if 'callback' in kwargs:
             raise pymongo.errors.InvalidOperation(
-                "Pass a callback to next_object, each, to_list, count, or tail,"
+                "Pass a callback to fetch_next, each, to_list, count, or tail,"
                 "not to find"
             )
 
@@ -1080,6 +1080,7 @@ class MotorCursor(MotorBase):
     _refresh      = AsyncRead()
     close         = AsyncCommand()
     cursor_id     = ReadOnlyDelegateProperty()
+    alive         = ReadOnlyDelegateProperty()
     batch_size    = MotorCursorChainingMethod()
     add_option    = MotorCursorChainingMethod()
     remove_option = MotorCursorChainingMethod()
@@ -1101,7 +1102,7 @@ class MotorCursor(MotorBase):
         .. note::
           There is no need to manually close cursors; they are closed
           by the server after being fully iterated
-          with :meth:`to_list`, :meth:`each`, or :meth:`next_object`, or
+          with :meth:`to_list`, :meth:`each`, or :meth:`fetch_next`, or
           automatically closed by the client when the :class:`MotorCursor` is
           cleaned up by the garbage collector.
         """
@@ -1135,16 +1136,16 @@ class MotorCursor(MotorBase):
         self.started = True
         self._refresh(callback=callback)
 
-    def next_object(self, callback):
-        """Asynchronously retrieve the next document in the result set,
-        fetching a batch of results from the server if necessary. After the
-        last document is retrieved, :attr:`alive` is ``False``.
+    @property
+    def fetch_next(self):
+        """Used with `gen.engine`_ to asynchronously retrieve the next document
+        in the result set, fetching a batch of documents from the server if
+        necessary. Yields ``False`` if there are no more documents, otherwise
+        :meth:`next_object` is guaranteed to return a document.
 
-        If :meth:`next_object` is called when no documents remain, the callback
-        receives ``None``. Normally, the callback will never receive ``None``
-        in a loop like this one:
+        .. _`gen.engine`: http://www.tornadoweb.org/documentation/gen.html
 
-        .. testsetup:: next_object
+        .. testsetup:: fetch_next
 
           import sys
 
@@ -1157,15 +1158,16 @@ class MotorCursor(MotorBase):
           from tornado import gen
           collection = MotorConnection().open_sync().test.test_collection
 
-        .. doctest:: next_object
+        .. doctest:: fetch_next
 
           >>> @gen.engine
           ... def f():
           ...     yield motor.Op(collection.insert,
           ...         [{'_id': i} for i in range(5)])
+          ...
           ...     cursor = collection.find().sort([('_id', 1)])
-          ...     while cursor.alive:
-          ...         doc = yield motor.Op(cursor.next_object)
+          ...     while (yield cursor.fetch_next):
+          ...         doc = cursor.next_object()
           ...         sys.stdout.write(str(doc['_id']) + ', ')
           ...     print 'done'
           ...     IOLoop.instance().stop()
@@ -1174,77 +1176,26 @@ class MotorCursor(MotorBase):
           >>> IOLoop.instance().start()
           0, 1, 2, 3, 4, done
 
-        However, if the initial :meth:`~motor.MotorCollection.find` matches no
-        documents, then :attr:`alive` is ``True`` at first, and the first call
-        to :meth:`next_object` receives ``None``, after which :attr:`alive` is
-        set to ``False``:
+        .. note:: While it appears that fetch_next retrieves each document from
+          the server individually, the cursor actually fetches documents
+          efficiently in `large batches`_.
 
-        .. doctest:: next_object
-
-          >>> @gen.engine
-          ... def f():
-          ...     yield motor.Op(collection.remove)
-          ...     cursor = collection.find()
-          ...     while cursor.alive:
-          ...         doc = yield motor.Op(cursor.next_object)
-          ...         sys.stdout.write(str(doc) + ', ')
-          ...     print 'done'
-          ...     IOLoop.instance().stop()
-          ...
-          >>> f()
-          >>> IOLoop.instance().start()
-          None, done
-
-        In the examples above there is no need to call :meth:`close`,
-        because the cursor is iterated to completion. If you cancel iteration
-        before exhausting the cursor, call :meth:`close` to immediately free
-        server resources. Otherwise, the cursor will eventually be closed
-        on the server when the garbage-collector deletes the object.
-
-        :Parameters:
-         - `callback`: function taking (document, error)
+        .. _`large batches`: http://www.mongodb.org/display/DOCS/Queries+and+Cursors#QueriesandCursors-Executionofqueriesinbatches
         """
         # TODO: prevent concurrent uses of this cursor, as IOStream does, and
         #   document that and how to avoid it.
-        check_callable(callback, required=True)
-        if not self.alive:
-            callback(None, None)
-            return
+        # TODO: optimize, always return same FetchNext instance? Or even make
+        #   this cursor a YieldPoint?
+        return FetchNext(self)
 
-        if self.delegate._Cursor__empty:
-            # Special case: limit of 0. callback(None, StopIteration()) is
-            # tempting here, but if uncaught it will cause a calling coroutine
-            # to exit early, and silently, causing difficult bugs.
-            callback(None, None)
-        else:
-            doc, error = None, None
-            if self.buffer_size > 0:
-                doc = self.delegate.next()
-
-            if self.buffer_size == 0 and self.alive:
-                # We're about to return doc, and the caller is going to continue
-                # a 'while cursor.alive' loop, so we need to determine first if
-                # we're really alive by sending the server a getMore.
-                def next_object_got_more(batch_size, error):
-                    # An odd consequence of this early getMore: if there's an
-                    # error we lose the current doc.
-                    if error:
-                        self.close()
-                        callback(None, error)
-                    elif doc is not None:
-                        callback(doc, None)
-                    elif self.buffer_size:
-                        # This was the first fetch, and it had results
-                        callback(self.delegate.next(), None)
-                    else:
-                        # Empty result set, e.g. a query that matched nothing.
-                        # Again, StopIteration is tempting but dangerous, just
-                        # return None.
-                        callback(None, None)
-
-                self._get_more(next_object_got_more)
-            else:
-                callback(doc, error)
+    def next_object(self):
+        """Get a document from the most recently fetched batch, or ``None``.
+        See :attr:`fetch_next`.
+        """
+        # TODO: comment on empty
+        if self.delegate._Cursor__empty or not self.buffer_size:
+            return None
+        return self.delegate.next()
 
     def each(self, callback):
         """Iterates over all the documents for this cursor.
@@ -1416,10 +1367,6 @@ class MotorCursor(MotorBase):
     def buffer_size(self):
         # TODO: expose so we don't have to use double-underscore hack
         return len(self.delegate._Cursor__data)
-
-    @property
-    def alive(self):
-        return bool(self.buffer_size or self.cursor_id or not self.started)
 
     def __getitem__(self, index):
         """Get a slice of documents from this cursor.
@@ -1721,3 +1668,40 @@ if requirements_satisfied:
                     results.append(result)
 
             return results
+
+
+    class FetchNext(gen.YieldPoint):
+        def __init__(self, cursor):
+            self.cursor = cursor
+            self.error = None
+            self.ready = False
+            self.runner = None
+
+        def start(self, runner):
+            # If cursor's current batch is empty, start fetching next batch...
+            cursor = self.cursor
+            if not cursor.buffer_size and cursor.alive:
+                self.ready = False
+                self.runner = runner
+                cursor._get_more(self.set_result)
+            else:
+                self.ready = True
+
+        def set_result(self, result, error):
+            # 'result' is _get_more's return value, the number of docs fetched
+            self.error = error
+            self.ready = True
+            runner, self.runner = self.runner, None # Break cycle
+            runner.run()
+
+        def is_ready(self):
+            # True unless we're in the midst of a fetch
+            return self.ready
+
+        def get_result(self):
+            if self.error:
+                raise self.error
+            if self.cursor.delegate._Cursor__empty:
+                # Special case, limit of 0
+                return False
+            return bool(self.cursor.buffer_size)

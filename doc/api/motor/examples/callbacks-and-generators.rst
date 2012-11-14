@@ -150,8 +150,8 @@ use async methods without explicit callbacks:
             self.write('<ul>')
             db = self.settings['db']
             cursor = db.messages.find().sort([('_id', -1)])
-            while cursor.alive:
-                message = yield motor.Op(cursor.next_object)
+            while (yield cursor.fetch_next):
+                message = cursor.next_object()
                 self.write('<li>%s</li>' % message['msg'])
 
             # Iteration complete

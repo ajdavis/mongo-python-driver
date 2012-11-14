@@ -25,6 +25,7 @@ import os
 import sys
 import time
 import traceback
+from tornado import gen
 from tornado.ioloop import IOLoop
 
 import motor
@@ -406,7 +407,6 @@ class Cursor(Synchro):
 
     rewind                     = WrapOutgoing()
     clone                      = WrapOutgoing()
-    alive                      = SynchroProperty()
 
     def __init__(self, motor_cursor):
         self.delegate = motor_cursor
@@ -415,18 +415,25 @@ class Cursor(Synchro):
         return self
 
     def next(self):
-        sync_next = self.synchronize(self.delegate.next_object)
-        rv = sync_next()
-        if rv is not None:
-            return rv
-        else:
+        cursor = self.delegate
+        # Hack, sorry
+        if cursor.delegate._Cursor__empty:
             raise StopIteration
+
+        if cursor.buffer_size:
+            return cursor.next_object()
+        elif cursor.alive:
+            self.synchronize(cursor._refresh)()
+            if cursor.buffer_size:
+                return cursor.next_object()
+
+        raise StopIteration
 
     def __getitem__(self, index):
         if isinstance(index, slice):
             return Cursor(self.delegate[index])
         else:
-            return self.synchronize(self.delegate[index].next_object)()
+            return self.synchronize(self.delegate[index].to_list)()[0]
 
     @property
     @wrap_synchro

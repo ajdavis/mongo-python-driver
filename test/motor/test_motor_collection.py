@@ -85,8 +85,8 @@ class MotorCollectionTest(MotorTest):
         ).batch_size(5)
 
         results = []
-        while cursor.alive:
-            doc = yield motor.Op(cursor.next_object)
+        while (yield cursor.fetch_next):
+            doc = cursor.next_object()
             results.append(doc['_id'])
             if doc['_id'] < 10:
                 self.assertEqual(
@@ -161,7 +161,6 @@ class MotorCollectionTest(MotorTest):
     def test_find_callback(self):
         cx = self.motor_connection(host, port)
         cursor = cx.test.test_collection.find()
-        self.check_required_callback(cursor.next_object)
         self.check_required_callback(cursor.each)
         self.check_required_callback(cursor.to_list)
 

@@ -53,28 +53,52 @@ class MotorCursorTest(MotorTest):
             coll.find({'_id': {'$lt': 100}, '$where': where}).count)
 
     @async_test_engine()
-    def test_next_object(self):
+    def test_fetch_next(self):
         coll = self.motor_connection(host, port).test.test_collection
-
-        # Empty results
-        cursor = coll.find({'foo':'bar'})
-        self.assertTrue(cursor.alive)
-        self.assertEqual(None, cursor.cursor_id)
-        # First fetch
-        yield AssertEqual(None, cursor.next_object)
-        self.assertFalse(cursor.alive)
-        self.assertEqual(0, cursor.cursor_id)
-
+        # 200 results, only including _id field, sorted by _id
         cursor = coll.find({}, {'_id': 1}).sort([('_id', pymongo.ASCENDING)])
-        yield AssertEqual({'_id': 0}, cursor.next_object)
-        self.assertTrue(cursor.alive)
-        self.assertTrue(cursor.cursor_id)
+        self.assertEqual(None, cursor.cursor_id)
+        self.assertEqual(None, cursor.next_object()) # Haven't fetched yet
+        i = 0
+        while (yield cursor.fetch_next):
+            self.assertEqual({'_id': i}, cursor.next_object())
+            i += 1
 
-        # Dereferencing the cursor eventually closes it on the server; yielding
+        self.assertEqual(False, (yield cursor.fetch_next))
+        self.assertEqual(None, cursor.next_object())
+        self.assertEqual(0, cursor.cursor_id)
+        self.assertEqual(200, i)
+
+        # Decref'ing the cursor eventually closes it on the server; yielding
         # clears the engine Runner's reference to the cursor.
+        cursor = coll.find()
+        yield cursor.fetch_next
         del cursor
         yield gen.Task(ioloop.IOLoop.instance().add_callback)
         self.wait_for_cursors()
+
+    @async_test_engine()
+    def test_fetch_next_without_results(self):
+        coll = self.motor_connection(host, port).test.test_collection
+        # Nothing matches this query
+        cursor = coll.find({'foo':'bar'})
+        self.assertEqual(None, cursor.next_object())
+        self.assertEqual(False, (yield cursor.fetch_next))
+        self.assertEqual(None, cursor.next_object())
+        # Now cursor knows it's exhausted
+        self.assertEqual(0, cursor.cursor_id)
+
+    @async_test_engine()
+    def test_fetch_next_is_idempotent(self):
+        # Subsequent calls to fetch_next don't do anything
+        coll = self.motor_connection(host, port).test.test_collection
+        cursor = coll.find()
+        self.assertEqual(None, cursor.cursor_id)
+        yield cursor.fetch_next
+        self.assertTrue(cursor.cursor_id)
+        self.assertEqual(101, cursor.buffer_size)
+        yield cursor.fetch_next # Does nothing
+        self.assertEqual(101, cursor.buffer_size)
 
     def test_each(self):
         coll = self.motor_connection(host, port).test.test_collection
@@ -118,8 +142,8 @@ class MotorCursorTest(MotorTest):
         # Make sure our setup code made some documents
         results = yield motor.Op(coll.find().to_list)
         self.assertTrue(len(results) > 0)
-        yield AssertEqual(None, coll.find()[:0].next_object)
-        yield AssertEqual(None, coll.find()[5:5].next_object)
+        self.assertEqual(False, (yield coll.find()[:0].fetch_next))
+        self.assertEqual(False, (yield coll.find()[5:5].fetch_next))
         yield AssertEqual(None, coll.find()[:0].each)
         yield AssertEqual(None, coll.find()[5:5].each)
         yield AssertEqual([], coll.find()[:0].to_list)
@@ -266,9 +290,9 @@ class MotorCursorTest(MotorTest):
 
         # test_collection was filled out in setUp() with 200 docs
         coll = cx.test.test_collection
-        yield AssertEqual(
-            {'_id': 0, 's': hex(0)},
-            coll.find().sort([('_id', 1)])[0].next_object)
+        cursor = coll.find().sort([('_id', 1)])[0]
+        yield cursor.fetch_next
+        self.assertEqual({'_id': 0, 's': hex(0)}, cursor.next_object())
 
         yield AssertEqual(
             [{'_id': 5, 's': hex(5)}],
@@ -276,7 +300,9 @@ class MotorCursorTest(MotorTest):
 
         # Only 200 documents, so 1000th doc doesn't exist. PyMongo raises
         # IndexError here, but Motor simply returns None.
-        yield AssertEqual(None, coll.find()[1000].next_object)
+        cursor = coll.find()[1000]
+        yield cursor.fetch_next
+        self.assertEqual(None, cursor.next_object())
         yield AssertEqual([], coll.find()[1000].to_list)
 
     def test_cursor_index_each(self):
@@ -307,51 +333,6 @@ class MotorCursorTest(MotorTest):
             lambda: sorted(results))
 
         ioloop.IOLoop.instance().start()
-
-    @async_test_engine()
-    def test_alive(self):
-        # Ensure cursor.alive is False after iteration completes
-        cx = self.motor_connection(host, port)
-        db = cx.test
-        yield motor.Op(db.drop_collection, "test")
-        yield motor.Op(
-            db.test.insert, [{'_id': i} for i in range(10)], safe=True)
-
-        # Get 10 docs in one fetch
-        cursor = db.test.find().sort([('_id', 1)])
-        self.assertTrue(cursor.alive)
-        i = 0
-        while cursor.alive:
-            self.assertEqual(i, (yield motor.Op(cursor.next_object))['_id'])
-            i += 1
-
-        self.assertEqual(10, i)
-        self.assertEqual(0, cursor.cursor_id)
-        yield AssertEqual(None, cursor.next_object)
-
-        # Get them in two fetches
-        cursor = db.test.find().sort([('_id', 1)]).batch_size(6)
-        i = 0
-        while cursor.alive:
-            self.assertEqual(i, (yield motor.Op(cursor.next_object))['_id'])
-            i += 1
-
-        self.assertEqual(10, i)
-        self.assertEqual(0, cursor.cursor_id)
-        yield AssertEqual(None, cursor.next_object)
-
-        # Edge case: get them in two fetches, then there's a third fetch that
-        # has no docs.
-        cursor = db.test.find().sort([('_id', 1)]).batch_size(5)
-        i = 0
-        while i < 10:
-            self.assertEqual(i, (yield motor.Op(cursor.next_object))['_id'])
-            i += 1
-
-        self.assertEqual(10, i)
-        self.assertEqual(0, cursor.cursor_id)
-        self.assertFalse(cursor.alive)
-        yield AssertEqual(None, cursor.next_object)
 
 
 if __name__ == '__main__':

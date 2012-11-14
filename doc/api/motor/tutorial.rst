@@ -356,9 +356,8 @@ Querying for More Than One Document
 Use :meth:`~motor.MotorCollection.find` to query for a set of documents.
 :meth:`~motor.MotorCollection.find` does no I/O and does not take a callback,
 it merely creates a :class:`~motor.MotorCursor` instance. The query is actually
-executed on the server when you call :meth:`~motor.MotorCursor.to_list`,
-:meth:`~motor.MotorCursor.each`, or :meth:`~motor.MotorCursor.next_object`.
-All three methods require a callback.
+executed on the server when you call :meth:`~motor.MotorCursor.to_list` or
+:meth:`~motor.MotorCursor.each`, or yield :attr:`~motor.MotorCursor.fetch_next`.
 
 To find all documents with "i" less than 5:
 
@@ -380,15 +379,16 @@ To find all documents with "i" less than 5:
   {u'i': 4, u'_id': ObjectId('...')}
 
 To iterate over a large result set without holding all the documents in memory
-at once, get one document at a time with :meth:`~motor.MotorCursor.next_object`:
+at once, get one document at a time with :attr:`~motor.MotorCursor.fetch_next`
+and :meth:`~motor.MotorCursor.next_object`:
 
 .. doctest:: after-inserting-2000-docs
 
   >>> @gen.engine
   ... def do_find():
   ...     cursor = db.test_collection.find({'i': {'$lt': 5}})
-  ...     while cursor.alive:
-  ...         document = yield motor.Op(cursor.next_object)
+  ...     while (yield cursor.fetch_next):
+  ...         document = cursor.next_object()
   ...         print document
   ...     IOLoop.instance().stop()
   ...
@@ -400,6 +400,9 @@ at once, get one document at a time with :meth:`~motor.MotorCursor.next_object`:
   {u'i': 3, u'_id': ObjectId('...')}
   {u'i': 4, u'_id': ObjectId('...')}
 
+Note that ``fetch_next`` doesn't need to be used with ``yield motor.Op``; it's
+already a yieldable object so you simply ``yield cursor.fetch_next``.
+
 You can apply a sort, limit, or skip to a query before you begin iterating:
 
 .. doctest:: after-inserting-2000-docs
@@ -409,8 +412,8 @@ You can apply a sort, limit, or skip to a query before you begin iterating:
   ...     cursor = db.test_collection.find({'i': {'$lt': 5}})
   ...     # Modify the query before iterating
   ...     cursor.sort([('i', pymongo.DESCENDING)]).limit(2).skip(2)
-  ...     while cursor.alive:
-  ...         document = yield motor.Op(cursor.next_object)
+  ...     while (yield cursor.fetch_next):
+  ...         document = cursor.next_object()
   ...         print document
   ...     IOLoop.instance().stop()
   ...
