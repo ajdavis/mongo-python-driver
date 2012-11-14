@@ -1204,6 +1204,9 @@ class MotorCursor(MotorBase):
         for each document. `callback` is passed ``(None, None)`` when iteration
         is complete.
 
+        Cancel iteration early by returning ``False`` from the callback. (Only
+        ``False``, not ``None`` or 0, cancels iteration.)
+
         .. testsetup:: each
 
           import sys
