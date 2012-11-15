@@ -21,6 +21,7 @@ if not motor.requirements_satisfied:
     from nose.plugins.skip import SkipTest
     raise SkipTest("Tornado or greenlet not installed")
 
+import greenlet
 from tornado import ioloop, gen
 
 from test.motor import (
@@ -333,6 +334,44 @@ class MotorCursorTest(MotorTest):
             lambda: sorted(results))
 
         ioloop.IOLoop.instance().start()
+
+    @async_test_engine()
+    def test_del_on_main_greenlet(self):
+        # Since __del__ can happen on any greenlet, MotorCursor must be
+        # prepared to close itself correctly on main or a child.
+        cx = self.motor_connection(host, port)
+        cursor = cx.test.test_collection.find()
+        yield cursor.fetch_next
+        self.assertEqual(1 + self.open_cursors, self.get_open_cursors())
+
+        # Clear the FetchNext reference from this gen.Runner so it's deleted
+        # and decrefs the cursor
+        yield gen.Task(ioloop.IOLoop.instance().add_callback)
+        self.assertEqual(1 + self.open_cursors, self.get_open_cursors())
+
+        del cursor
+        self.wait_for_cursors()
+
+    @async_test_engine()
+    def test_del_on_child_greenlet(self):
+        # Since __del__ can happen on any greenlet, MotorCursor must be
+        # prepared to close itself correctly on main or a child.
+        cx = self.motor_connection(host, port)
+        cursor = [cx.test.test_collection.find()]
+        yield cursor[0].fetch_next
+
+        # Clear the FetchNext reference from this gen.Runner so it's deleted
+        # and decrefs the cursor
+        yield gen.Task(ioloop.IOLoop.instance().add_callback)
+        self.assertEqual(1 + self.open_cursors, self.get_open_cursors())
+
+        def f():
+            # Last ref, should trigger __del__ immediately in CPython and
+            # allow eventual __del__ in PyPY.
+            del cursor[0]
+
+        greenlet.greenlet(f).switch()
+        self.wait_for_cursors()
 
 
 if __name__ == '__main__':

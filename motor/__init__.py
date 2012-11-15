@@ -1425,7 +1425,18 @@ class MotorCursor(MotorBase):
             return self[self.delegate._Cursor__skip+index:].limit(-1)
 
     def __del__(self):
-        self.close()
+        # This MotorCursor is deleted on whatever greenlet does the last decref,
+        # or (if it's referenced from a cycle) whichever is current when the GC
+        # kicks in. We may need to send the server a killCursors message, but in
+        # Motor only direct children of the main greenlet can do I/O. First, do
+        # a quick check whether the cursor is still alive on the server:
+        if self.cursor_id and self.alive:
+            if greenlet.getcurrent().parent:
+                # We're on a child greenlet, send the message.
+                self.delegate.close()
+            else:
+                # We're on the main greenlet, start the operation on a child.
+                self.close()
 
 
 # TODO: doc not really a file-like object
