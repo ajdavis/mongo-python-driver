@@ -35,6 +35,7 @@ except ImportError:
 
 
 import pymongo
+import pymongo.common
 import pymongo.cursor
 import pymongo.errors
 import pymongo.pool
@@ -1275,23 +1276,75 @@ class MotorCursor(MotorBase):
             # Complete
             add_callback(functools.partial(callback, None, None))
 
-    def to_list(self, callback):
+    def to_list(self, length=None, callback=None):
         """Get a list of documents.
 
         The caller is responsible for making sure that there is enough memory
-        to store the results -- it is strongly recommended you use a limit like:
+        to store the results -- it is strongly recommended either that you
+        specify a ``length`` and loop until all documents are consumed:
 
-        >>> collection.find().limit(some_number).to_list(callback)
+        .. testsetup:: to_list
+
+          from pymongo.connection import Connection
+          Connection().test.test_collection.remove(safe=True)
+          from motor import MotorConnection
+          from tornado.ioloop import IOLoop
+          from tornado import gen
+          collection = MotorConnection().open_sync().test.test_collection
+          import motor
+
+        .. doctest:: to_list
+
+          >>> @gen.engine
+          ... def f():
+          ...     yield motor.Op(
+          ...         collection.insert, [{'_id': i} for i in range(4)])
+          ...     cursor = collection.find().sort([('_id', 1)])
+          ...     docs = yield motor.Op(cursor.to_list, 2) # length is 2
+          ...     while docs:
+          ...         print docs
+          ...         docs = (yield motor.Op(cursor.to_list, 2))
+          ...
+          ...     print 'done'
+          ...     IOLoop.instance().stop()
+          ...
+          >>> f()
+          >>> IOLoop.instance().start()
+          [{u'_id': 0}, {u'_id': 1}]
+          [{u'_id': 2}, {u'_id': 3}]
+          done
+
+        Or that you set a limit on the cursor:
+
+        .. doctest:: to_list
+
+          >>> @gen.engine
+          ... def f():
+          ...     yield motor.Op(
+          ...         collection.insert, [{'_id': i} for i in range(4, 400)])
+          ...     cursor = collection.find().sort([('_id', 1)]).limit(4)
+          ...     # No max length passed to 'to_list', but a limit set on cursor
+          ...     docs = yield motor.Op(cursor.to_list)
+          ...     print docs
+          ...     print 'done'
+          ...     IOLoop.instance().stop()
+          ...
+          >>> f()
+          >>> IOLoop.instance().start()
+          [{u'_id': 0}, {u'_id': 1}, {u'_id': 2}, {u'_id': 3}]
+          done
 
         ``to_list`` returns immediately, and ``callback`` is executed
         asynchronously with the list of documents.
 
-        After ``to_list`` completes, :attr:`alive` is ``False`` and the cursor
-        is closed.
-
         :Parameters:
+         - `length`: optional, maximum number of documents to return for this
+           call
          - `callback`: function taking (documents, error)
         """
+        length = pymongo.common.validate_positive_integer_or_none(
+            'length', length)
+
         if self.delegate._Cursor__tailable:
             raise pymongo.errors.InvalidOperation(
                 "Can't call to_list on tailable cursor")
@@ -1304,20 +1357,29 @@ class MotorCursor(MotorBase):
             callback([], None)
             return
 
-        self._to_list_got_more(callback, the_list, None, None)
+        self._to_list_got_more(callback, the_list, length, None, None)
 
-    def _to_list_got_more(self, callback, the_list, batch_size, error):
+    def _to_list_got_more(self, callback, the_list, length, batch_size, error):
         if error:
             callback(None, error)
             return
 
-        if self.buffer_size > 0:
+        if length is None:
+            # No maximum length, get all results
             the_list.extend(self.delegate._Cursor__data)
             self.delegate._Cursor__data.clear()
+        else:
+            while self.buffer_size > 0 and len(the_list) < length:
+                the_list.append(self.delegate._Cursor__data.popleft())
 
-        if not self.delegate._Cursor__killed and (self.cursor_id or not self.started):
-            self._get_more(callback=functools.partial(
-                self._to_list_got_more, callback, the_list))
+        if (
+            not self.delegate._Cursor__killed
+            and (self.cursor_id or not self.started)
+            and (length is None or length > len(the_list))
+        ):
+            get_more_cb = functools.partial(
+                self._to_list_got_more, callback, the_list, length)
+            self._get_more(callback=get_more_cb)
         else:
             callback(the_list, None)
 

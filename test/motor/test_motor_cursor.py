@@ -15,6 +15,7 @@
 """Test Motor, an asynchronous driver for MongoDB and Tornado."""
 
 import unittest
+from functools import partial
 
 import motor
 if not motor.requirements_satisfied:
@@ -27,7 +28,7 @@ from tornado import ioloop, gen
 from test.motor import (
     MotorTest, async_test_engine, host, port, AssertEqual)
 import pymongo
-import pymongo.errors
+from pymongo.errors import InvalidOperation, ConfigurationError
 
 
 class MotorCursorTest(MotorTest):
@@ -117,6 +118,16 @@ class MotorCursorTest(MotorTest):
         self.assertEventuallyEqual(expected, lambda: results)
         ioloop.IOLoop.instance().start()
 
+    def test_to_list_argument_checking(self):
+        coll = self.motor_connection(host, port).test.test_collection
+        cursor = coll.find()
+        self.check_callback_handling(partial(cursor.to_list, 10), True)
+
+        cursor = coll.find()
+        callback = lambda result, error: None
+        self.assertRaises(ConfigurationError, cursor.to_list, -1, callback)
+        self.assertRaises(ConfigurationError, cursor.to_list, 'foo', callback)
+
     @async_test_engine()
     def test_to_list(self):
         coll = self.motor_connection(host, port).test.test_collection
@@ -125,13 +136,41 @@ class MotorCursorTest(MotorTest):
         yield AssertEqual(expected, cursor.to_list)
         yield motor.Op(cursor.close)
 
+    @async_test_engine()
+    def test_to_list_with_length(self):
+        coll = self.motor_connection(host, port).test.test_collection
+        cursor = coll.find({}, {'_id': 1}).sort([('_id', pymongo.ASCENDING)])
+        yield AssertEqual([], cursor.to_list, 0)
+
+        def expected(start, stop):
+            return [{'_id': i} for i in range(start, stop)]
+
+        yield AssertEqual(expected(0, 10), cursor.to_list, 10)
+        yield AssertEqual(expected(10, 100), cursor.to_list, 90)
+
+        # Test particularly rigorously around the 101-doc mark, since this is
+        # where the first batch ends
+        yield AssertEqual(expected(100, 101), cursor.to_list, 1)
+        yield AssertEqual(expected(101, 102), cursor.to_list, 1)
+        yield AssertEqual(expected(102, 103), cursor.to_list, 1)
+        yield AssertEqual([], cursor.to_list, 0)
+        yield AssertEqual(expected(103, 105), cursor.to_list, 2)
+
+        # Only 95 docs left, make sure length=100 doesn't error or hang
+        yield AssertEqual(expected(105, 200), cursor.to_list, 100)
+        self.assertEqual(0, cursor.cursor_id)
+
+        # Check that passing None explicitly is the same as no length
+        result = yield motor.Op(coll.find().to_list, None)
+        self.assertEqual(200, len(result))
+
     def test_to_list_tailable(self):
         coll = self.motor_connection(host, port).test.test_collection
         cursor = coll.find(tailable=True)
 
         # Can't call to_list on tailable cursor
         self.assertRaises(
-            pymongo.errors.InvalidOperation, cursor.to_list, lambda: None)
+            InvalidOperation, cursor.to_list, callback=lambda: None)
 
     @async_test_engine()
     def test_limit_zero(self):
