@@ -1220,7 +1220,6 @@ class MotorCursor(MotorBase):
 
         .. doctest:: each
 
-          >>> Connection().test.test_collection.remove()
           >>> cursor = None
           >>> def inserted(result, error):
           ...     global cursor
