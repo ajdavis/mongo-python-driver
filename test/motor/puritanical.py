@@ -27,7 +27,7 @@ class PuritanicalIOLoop(ioloop.IOLoop):
     """
     def handle_callback_exception(self, callback):
         exc_type, exc_value, tb = sys.exc_info()
-        traceback.print_tb(tb, file=sys.stderr)
+        traceback.print_exception(exc_type, exc_value, tb)
         raise exc_value
 
 class PuritanicalTest(unittest.TestCase):
