@@ -213,6 +213,7 @@ class MotorCollectionTest(MotorTest):
         )
 
         ioloop.IOLoop.instance().start()
+        self.wait_for_cursors()
 
     def test_find_and_cancel(self):
         cx = self.motor_connection(host, port)
