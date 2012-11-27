@@ -40,7 +40,7 @@ class MotorCursorTest(MotorTest):
         self.assertFalse(cursor.started, "Cursor shouldn't start immediately")
 
     @async_test_engine()
-    def test_count(self):
+    def test_count(self, done):
         coll = self.motor_connection(host, port).test.test_collection
         yield AssertEqual(200, coll.find().count)
         yield AssertEqual(100, coll.find({'_id': {'$gt': 99}}).count)
@@ -53,9 +53,10 @@ class MotorCursorTest(MotorTest):
         yield AssertEqual(
             25,
             coll.find({'_id': {'$lt': 100}, '$where': where}).count)
+        done()
 
     @async_test_engine()
-    def test_fetch_next(self):
+    def test_fetch_next(self, done):
         coll = self.motor_connection(host, port).test.test_collection
         # 200 results, only including _id field, sorted by _id
         cursor = coll.find({}, {'_id': 1}).sort([('_id', pymongo.ASCENDING)])
@@ -78,9 +79,10 @@ class MotorCursorTest(MotorTest):
         del cursor
         yield gen.Task(ioloop.IOLoop.instance().add_callback)
         self.wait_for_cursors()
+        done()
 
     @async_test_engine()
-    def test_fetch_next_without_results(self):
+    def test_fetch_next_without_results(self, done):
         coll = self.motor_connection(host, port).test.test_collection
         # Nothing matches this query
         cursor = coll.find({'foo':'bar'})
@@ -89,9 +91,10 @@ class MotorCursorTest(MotorTest):
         self.assertEqual(None, cursor.next_object())
         # Now cursor knows it's exhausted
         self.assertEqual(0, cursor.cursor_id)
+        done()
 
     @async_test_engine()
-    def test_fetch_next_is_idempotent(self):
+    def test_fetch_next_is_idempotent(self, done):
         # Subsequent calls to fetch_next don't do anything
         coll = self.motor_connection(host, port).test.test_collection
         cursor = coll.find()
@@ -101,6 +104,7 @@ class MotorCursorTest(MotorTest):
         self.assertEqual(101, cursor.buffer_size)
         yield cursor.fetch_next # Does nothing
         self.assertEqual(101, cursor.buffer_size)
+        done()
 
     def test_each(self):
         coll = self.motor_connection(host, port).test.test_collection
@@ -129,15 +133,16 @@ class MotorCursorTest(MotorTest):
         self.assertRaises(ConfigurationError, cursor.to_list, 'foo', callback)
 
     @async_test_engine()
-    def test_to_list(self):
+    def test_to_list(self, done):
         coll = self.motor_connection(host, port).test.test_collection
         cursor = coll.find({}, {'_id': 1}).sort([('_id', pymongo.ASCENDING)])
         expected = [{'_id': i} for i in range(200)]
         yield AssertEqual(expected, cursor.to_list)
         yield motor.Op(cursor.close)
+        done()
 
     @async_test_engine()
-    def test_to_list_with_length(self):
+    def test_to_list_with_length(self, done):
         coll = self.motor_connection(host, port).test.test_collection
         cursor = coll.find({}, {'_id': 1}).sort([('_id', pymongo.ASCENDING)])
         yield AssertEqual([], cursor.to_list, 0)
@@ -163,6 +168,7 @@ class MotorCursorTest(MotorTest):
         # Check that passing None explicitly is the same as no length
         result = yield motor.Op(coll.find().to_list, None)
         self.assertEqual(200, len(result))
+        done()
 
     def test_to_list_tailable(self):
         coll = self.motor_connection(host, port).test.test_collection
@@ -173,7 +179,7 @@ class MotorCursorTest(MotorTest):
             InvalidOperation, cursor.to_list, callback=lambda: None)
 
     @async_test_engine()
-    def test_limit_zero(self):
+    def test_limit_zero(self, done):
         # Limit of 0 is a weird case that PyMongo handles specially, make sure
         # Motor does too. cursor.limit(0) means "remove limit", but cursor[:0]
         # or cursor[5:5] sets the cursor to "empty".
@@ -189,6 +195,7 @@ class MotorCursorTest(MotorTest):
         yield AssertEqual([], coll.find()[:0].to_list)
         yield AssertEqual([], coll.find()[5:5].to_list)
         self.wait_for_cursors()
+        done()
 
     def test_cursor_close(self):
         # The flow here is complex; we're testing that a cursor can be
@@ -280,7 +287,7 @@ class MotorCursorTest(MotorTest):
         self.assertRaises(IndexError, lambda: collection.find()[-1])
 
     @async_test_engine()
-    def test_cursor_slice(self):
+    def test_cursor_slice(self, done):
         # This is an asynchronous copy of PyMongo's test_getitem_slice_index in
         # test_cursor.py
 
@@ -324,8 +331,10 @@ class MotorCursorTest(MotorTest):
         result = yield motor.Op(coll.find()[:5].to_list)
         self.assertEqual(5, len(result))
 
+        done()
+
     @async_test_engine()
-    def test_cursor_index(self):
+    def test_cursor_index(self, done):
         cx = self.motor_connection(host, port)
 
         # test_collection was filled out in setUp() with 200 docs
@@ -344,6 +353,7 @@ class MotorCursorTest(MotorTest):
         yield cursor.fetch_next
         self.assertEqual(None, cursor.next_object())
         yield AssertEqual([], coll.find()[1000].to_list)
+        done()
 
     def test_cursor_index_each(self):
         cx = self.motor_connection(host, port)
@@ -375,7 +385,7 @@ class MotorCursorTest(MotorTest):
         ioloop.IOLoop.instance().start()
 
     @async_test_engine()
-    def test_del_on_main_greenlet(self):
+    def test_del_on_main_greenlet(self, done):
         # Since __del__ can happen on any greenlet, MotorCursor must be
         # prepared to close itself correctly on main or a child.
         cx = self.motor_connection(host, port)
@@ -390,9 +400,10 @@ class MotorCursorTest(MotorTest):
 
         del cursor
         self.wait_for_cursors()
+        done()
 
     @async_test_engine()
-    def test_del_on_child_greenlet(self):
+    def test_del_on_child_greenlet(self, done):
         # Since __del__ can happen on any greenlet, MotorCursor must be
         # prepared to close itself correctly on main or a child.
         cx = self.motor_connection(host, port)
@@ -411,6 +422,7 @@ class MotorCursorTest(MotorTest):
 
         greenlet.greenlet(f).switch()
         self.wait_for_cursors()
+        done()
 
 
 if __name__ == '__main__':

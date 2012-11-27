@@ -34,7 +34,7 @@ class MotorGenTest(MotorTest):
         super(MotorGenTest, self).tearDown()
 
     @async_test_engine()
-    def test_op(self):
+    def test_op(self, done):
         cx = self.motor_connection(host, port)
         collection = cx.test.test_collection
         doc = {'_id': 'jesse'}
@@ -50,9 +50,10 @@ class MotorGenTest(MotorTest):
             error = e
 
         self.assertTrue(isinstance(error, DuplicateKeyError))
+        done()
 
     @async_test_engine()
-    def test_wait_op(self):
+    def test_wait_op(self, done):
         cx = self.motor_connection(host, port)
         collection = cx.test.test_collection
         doc = {'_id': 'jesse'}
@@ -74,9 +75,10 @@ class MotorGenTest(MotorTest):
             error = e
 
         self.assertTrue(isinstance(error, DuplicateKeyError))
+        done()
 
     @async_test_engine()
-    def test_wait_all_ops(self):
+    def test_wait_all_ops(self, done):
         cx = self.motor_connection(host, port)
         collection = cx.test.test_collection2
         collection.insert(
@@ -108,7 +110,7 @@ class MotorGenTest(MotorTest):
             error = e
 
         self.assertTrue(isinstance(error, DuplicateKeyError))
-
+        done()
 
 if __name__ == '__main__':
     unittest.main()

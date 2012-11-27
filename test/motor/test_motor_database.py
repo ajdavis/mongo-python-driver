@@ -30,7 +30,7 @@ from pymongo.son_manipulator import AutoReference, NamespaceInjector
 
 class MotorDatabaseTest(MotorTest):
     @async_test_engine()
-    def test_database(self):
+    def test_database(self, done):
         # Test that we can create a db directly, not just from MotorConnection's
         # accessors
         cx = self.motor_connection(host, port)
@@ -39,6 +39,7 @@ class MotorDatabaseTest(MotorTest):
         # Make sure we got the right DB and it can do an operation
         doc = yield motor.Op(db.test_collection.find_one, {'_id': 1})
         self.assertEqual(hex(1), doc['s'])
+        done()
 
     def test_collection_named_delegate(self):
         db = self.motor_connection(host, port).test
@@ -52,17 +53,18 @@ class MotorDatabaseTest(MotorTest):
         self.check_required_callback(db.validate_collection, "collection")
 
     @async_test_engine()
-    def test_command(self):
+    def test_command(self, done):
         cx = self.motor_connection(host, port)
         result = yield motor.Op(cx.admin.command, "buildinfo")
         self.assertEqual(int, type(result['bits']))
+        done()
 
     def test_command_callback(self):
         cx = self.motor_connection(host, port)
         self.check_optional_callback(cx.admin.command, 'buildinfo', check=False)
 
     @async_test_engine()
-    def test_auto_ref_and_deref(self):
+    def test_auto_ref_and_deref(self, done):
         # Test same functionality as in PyMongo's test_database.py; the
         # implementation for Motor for async is a little complex so we test
         # that it works here, and we don't just rely on synchrotest
@@ -98,8 +100,10 @@ class MotorDatabaseTest(MotorTest):
         self.assertEqual(b, result_c["another test"])
         self.assertEqual(c, result_c)
 
+        done()
+
     @async_test_engine()
-    def test_authenticate(self):
+    def test_authenticate(self, done):
         cx = self.motor_connection(host, port)
         db = cx.pymongo_test
 
@@ -121,7 +125,7 @@ class MotorDatabaseTest(MotorTest):
         yield motor.Op(db.remove_user, "mike")
         users = yield motor.Op(db.system.users.find().to_list)
         self.assertFalse("mike" in [u['user'] for u in users])
-
+        done()
 
 if __name__ == '__main__':
     unittest.main()

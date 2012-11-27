@@ -18,7 +18,6 @@ import time
 import unittest
 
 import motor
-from test.motor import puritanical
 
 if not motor.requirements_satisfied:
     from nose.plugins.skip import SkipTest
@@ -38,7 +37,7 @@ from test.utils import server_is_master_with_slave, delay
 
 class MotorConnectionTest(MotorTest):
     @async_test_engine()
-    def test_connection(self):
+    def test_connection(self, done):
         cx = motor.MotorConnection(host, port)
 
         # Can't access databases before connecting
@@ -59,13 +58,14 @@ class MotorConnectionTest(MotorTest):
         # Ensure callback is re-executed if already connected
         yield AssertEqual(cx, cx.open)
         self.assertEqual(cx, cx.open_sync())
+        done()
 
     def test_connection_callback(self):
         cx = motor.MotorConnection(host, port)
         self.check_optional_callback(cx.open)
 
     @async_test_engine()
-    def test_sync_connection(self):
+    def test_sync_connection(self, done):
         class DictSubclass(dict):
             pass
 
@@ -90,8 +90,10 @@ class MotorConnectionTest(MotorTest):
             {'_id': 5, 's': hex(5)},
             sync_cx.test.test_collection.find_one({'_id': 5}))
 
+        done()
+
     @async_test_engine()
-    def test_open_sync(self):
+    def test_open_sync(self, done):
         loop = ioloop.IOLoop.instance()
         cx = motor.MotorConnection(host, port)
         self.assertFalse(cx.connected)
@@ -113,12 +115,13 @@ class MotorConnectionTest(MotorTest):
         doc = yield motor.Op(
             cx.test.test_collection.find_one, {'_id': 'test_open_sync'})
         self.assertEqual('test_open_sync', doc['_id'])
+        done()
 
     def test_open_sync_custom_io_loop(self):
         # Check that we can create a MotorConnection with a custom IOLoop, then
         # call open_sync(), which uses a new loop, and the custom loop is
         # restored.
-        loop = puritanical.PuritanicalIOLoop()
+        loop = ioloop.IOLoop()
         cx = motor.MotorConnection(host, port, io_loop=loop)
         self.assertEqual(cx, cx.open_sync())
         self.assertTrue(cx.connected)
@@ -127,7 +130,7 @@ class MotorConnectionTest(MotorTest):
         self.assertEqual(loop, cx.io_loop)
 
         @async_test_engine(io_loop=loop)
-        def test(self):
+        def test(self, done):
             # Custom loop works?
             yield AssertEqual(
                 {'_id': 17, 's': hex(17)},
@@ -136,6 +139,7 @@ class MotorConnectionTest(MotorTest):
             yield AssertEqual(
                 {'_id': 37, 's': hex(37)},
                 cx.test.test_collection.find_one, {'_id': 37})
+            done()
 
         test(self)
 
@@ -145,10 +149,10 @@ class MotorConnectionTest(MotorTest):
             lambda: motor.MotorConnection(host, port, io_loop='foo')
         )
 
-        loop = puritanical.PuritanicalIOLoop()
+        loop = ioloop.IOLoop()
 
         @async_test_engine(io_loop=loop)
-        def test(self):
+        def test(self, done):
             # Make sure we can do async things with the custom loop
             cx = motor.MotorConnection(host, port, io_loop=loop)
             yield AssertEqual(cx, cx.open)
@@ -156,6 +160,7 @@ class MotorConnectionTest(MotorTest):
             doc = yield motor.Op(
                 cx.test.test_collection.find_one, {'_id': 17})
             self.assertEqual({'_id': 17, 's': hex(17)}, doc)
+            done()
 
         test(self)
 
@@ -174,7 +179,7 @@ class MotorConnectionTest(MotorTest):
             pymongo.errors.InvalidName, cx.copy_database, "foo", "$foo")
 
     @async_test_engine(timeout_sec=60)
-    def test_copy_db(self):
+    def test_copy_db(self, done):
         # 1. Drop old test DBs
         # 2. Copy a test DB N times at once (we need to do it many times at
         #   once to make sure that GreenletPool's start_request() is properly
@@ -252,6 +257,7 @@ class MotorConnectionTest(MotorTest):
         check_copydb_results()
 
         drop_all()
+        done()
 
     def test_timeout(self):
         # Launch two slow find_ones. The one with a timeout should get an error
@@ -291,7 +297,7 @@ class MotorConnectionTest(MotorTest):
         time.sleep(0.5)
 
     @async_test_engine()
-    def test_connection_failure(self):
+    def test_connection_failure(self, done):
         exc = None
         try:
             # Assuming there isn't anything actually running on this port
@@ -308,8 +314,10 @@ class MotorConnectionTest(MotorTest):
         else:
             self.assertTrue('error' in str(exc))
 
+        done()
+
     @async_test_engine()
-    def test_connection_timeout(self):
+    def test_connection_timeout(self, done):
         exc = None
         start = time.time()
         try:
@@ -326,8 +334,10 @@ class MotorConnectionTest(MotorTest):
             ' after %s'
         ) % connection_duration)
 
+        done()
+
     @async_test_engine()
-    def test_max_pool_size_validation(self):
+    def test_max_pool_size_validation(self, done):
         cx = motor.MotorConnection(host=host, port=port, max_pool_size=-1)
         yield AssertRaises(ConfigurationError, cx.open)
 
@@ -337,6 +347,7 @@ class MotorConnectionTest(MotorTest):
         c = motor.MotorConnection(host=host, port=port, max_pool_size=100)
         yield motor.Op(c.open)
         self.assertEqual(c.max_pool_size, 100)
+        done()
 
     def test_requests(self):
         cx = self.motor_connection(host, port)

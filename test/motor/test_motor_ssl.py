@@ -47,7 +47,7 @@ class MotorSSLTest(MotorTest):
     ssl = True
 
     @async_test_engine()
-    def test_simple_ops(self):
+    def test_simple_ops(self, done):
         if not have_ssl:
             raise SkipTest("SSL not compiled into Python")
 
@@ -59,6 +59,7 @@ class MotorSSLTest(MotorTest):
         hello = yield motor.Op(db.collection.find_one, {'hello': 'goodbye'})
         self.assertEqual('goodbye', hello['hello'])
         yield motor.Op(cx.drop_database, db)
+        done()
 
 
 if __name__ == '__main__':

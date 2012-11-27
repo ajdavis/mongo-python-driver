@@ -28,7 +28,7 @@ from test.motor import MotorTest, host, port, async_test_engine
 
 class MotorIPv6Test(MotorTest):
     @async_test_engine()
-    def test_ipv6(self):
+    def test_ipv6(self, done):
         assert host in ('localhost', '127.0.0.1'), (
             "This unittest isn't written to test IPv6 with host %s" % repr(host)
         )
@@ -52,6 +52,8 @@ class MotorIPv6Test(MotorTest):
             yield motor.Op(cx.test.test.insert, {"dummy": "object"})
             result = yield motor.Op(cx.test.test.find_one, {"dummy": "object"})
             self.assertEqual('object', result['dummy'])
+
+        done()
 
 if __name__ == '__main__':
     unittest.main()

@@ -35,7 +35,7 @@ from test.utils import delay
 
 class MotorCollectionTest(MotorTest):
     @async_test_engine()
-    def test_collection(self):
+    def test_collection(self, done):
         # Test that we can create a collection directly, not just from
         # MotorConnection's accessors
         db = self.motor_connection(host, port).test
@@ -44,9 +44,10 @@ class MotorCollectionTest(MotorTest):
         # Make sure we got the right collection and it can do an operation
         doc = yield motor.Op(collection.find_one, {'_id': 1})
         self.assertEqual(1, doc['_id'])
+        done()
 
     @async_test_engine()
-    def test_dotted_collection_name(self):
+    def test_dotted_collection_name(self, done):
         # Ensure that remove, insert, and find work on collections with dots
         # in their names.
         cx = self.motor_connection(host, port)
@@ -62,10 +63,12 @@ class MotorCollectionTest(MotorTest):
             yield motor.Op(coll.remove)
             yield AssertEqual(None, coll.find_one, {'_id':'xyzzy'})
 
+        done()
+
     # TODO: move the next few tests into test_motor_cursor and refactor to
     #   avoid redundancy
     @async_test_engine()
-    def test_next_object(self):
+    def test_next_object(self, done):
         # 1. Open a connection.
         #
         # 2. test_collection has docs inserted in setUp(). Query for documents
@@ -99,6 +102,7 @@ class MotorCollectionTest(MotorTest):
             self.open_cursors,
             self.get_open_cursors()
         )
+        done()
 
     def test_each(self):
         # 1. Open a connection.
@@ -143,7 +147,7 @@ class MotorCollectionTest(MotorTest):
         self.assertEventuallyEqual(range(14), lambda: results)
 
     @async_test_engine()
-    def test_find_where(self):
+    def test_find_where(self, done):
         # Check that $where clauses work
         coll = self.motor_connection(host, port).test.test_collection
         res = yield motor.Op(coll.find().to_list)
@@ -157,6 +161,7 @@ class MotorCollectionTest(MotorTest):
 
         res1 = yield motor.Op(coll.find().where(where).to_list)
         self.assertEqual(res0, res1)
+        done()
 
     def test_find_callback(self):
         cx = self.motor_connection(host, port)
@@ -248,20 +253,22 @@ class MotorCollectionTest(MotorTest):
         self.wait_for_cursors()
 
     @async_test_engine()
-    def test_find_to_list(self):
+    def test_find_to_list(self, done):
         yield AssertEqual(
             [{'_id': i} for i in range(200)],
             self.motor_connection(host, port).test.test_collection.find(
                 sort=[('_id', 1)], fields=['_id']
             ).to_list
         )
+        done()
 
     @async_test_engine()
-    def test_find_one(self):
+    def test_find_one(self, done):
         yield AssertEqual(
             {'_id': 1, 's': hex(1)},
             self.motor_connection(host, port).test.test_collection.find_one,
             {'_id': 1})
+        done()
 
     def test_find_one_callback(self):
         cx = self.motor_connection(host, port)
@@ -313,7 +320,7 @@ class MotorCollectionTest(MotorTest):
         ioloop.IOLoop.instance().start()
 
     @async_test_engine()
-    def test_update(self):
+    def test_update(self, done):
         cx = self.motor_connection(host, port)
         result = yield motor.Op(cx.test.test_collection.update,
             {'_id': 5},
@@ -324,9 +331,10 @@ class MotorCollectionTest(MotorTest):
         self.assertEqual(True, result['updatedExisting'])
         self.assertEqual(1, result['n'])
         self.assertEqual(None, result['err'])
+        done()
 
     @async_test_engine()
-    def test_update_bad(self):
+    def test_update_bad(self, done):
         # Violate a unique index, make sure we handle error well
         results = []
 
@@ -350,35 +358,39 @@ class MotorCollectionTest(MotorTest):
             self.fail("Expected DuplicateKeyError, got %s" % repr(e))
         else:
             self.fail("DuplicateKeyError not raised")
+        done()
 
     def test_update_callback(self):
         cx = self.motor_connection(host, port)
         self.check_optional_callback(cx.test.test_collection.update, {}, {})
 
     @async_test_engine()
-    def test_insert(self):
+    def test_insert(self, done):
         yield AssertEqual(
             201,
             self.motor_connection(host, port).test.test_collection.insert,
             {'_id': 201}
         )
+        done()
 
     @async_test_engine()
-    def test_insert_many(self):
+    def test_insert_many(self, done):
         yield AssertEqual(
             range(201, 211),
             self.motor_connection(host, port).test.test_collection.insert,
             [{'_id': i, 's': hex(i)} for i in range(201, 211)]
         )
+        done()
 
     @async_test_engine()
-    def test_insert_bad(self):
+    def test_insert_bad(self, done):
         # Violate a unique index, make sure we handle error well
         yield AssertRaises(
             DuplicateKeyError,
             self.motor_connection(host, port).test.test_collection.insert,
             {'s': hex(4)} # There's already a document with s: hex(4)
         )
+        done()
 
     def test_insert_many_one_bad(self):
         # Violate a unique index in one of many updates, handle error
@@ -413,16 +425,17 @@ class MotorCollectionTest(MotorTest):
         self.check_optional_callback(cx.test.test_collection.save, {})
 
     @async_test_engine()
-    def test_save_with_id(self):
+    def test_save_with_id(self, done):
         # save() returns the _id, in this case 5
         yield AssertEqual(
             5,
             self.motor_connection(host, port).test.test_collection.save,
             {'_id': 5}
         )
+        done()
 
     @async_test_engine()
-    def test_save_without_id(self):
+    def test_save_without_id(self, done):
         result = yield motor.Op(
             self.motor_connection(host, port).test.test_collection.save,
             {'fiddle': 'faddle'}
@@ -430,18 +443,20 @@ class MotorCollectionTest(MotorTest):
 
         # save() returns the new _id
         self.assertTrue(isinstance(result, ObjectId))
+        done()
 
     @async_test_engine()
-    def test_save_bad(self):
+    def test_save_bad(self, done):
         # Violate a unique index, make sure we handle error well
         yield AssertRaises(
             DuplicateKeyError,
             self.motor_connection(host, port).test.test_collection.save,
             {'_id': 5, 's': hex(4)} # There's already a document with s: hex(4)
         )
+        done()
 
     @async_test_engine()
-    def test_save_multiple(self):
+    def test_save_multiple(self, done):
         # TODO: what are we testing here really?
         cx = self.motor_connection(host, port)
 
@@ -459,9 +474,10 @@ class MotorCollectionTest(MotorTest):
         # Once all saves complete, results will be a list of _id's, from 500 to
         # 509, but not necessarily in that order since we're motor
         self.assertEqual(range(500, 510), sorted(results))
+        done()
 
     @async_test_engine()
-    def test_remove(self):
+    def test_remove(self, done):
         # Remove a document twice, check that we get a success response first
         # time and an error the second time.
         cx = self.motor_connection(host, port)
@@ -478,13 +494,14 @@ class MotorCollectionTest(MotorTest):
         self.assertEqual(0, result['n'])
         self.assertEqual(1, result['ok'])
         self.assertEqual(None, result['err'])
+        done()
 
     def test_remove_callback(self):
         cx = self.motor_connection(host, port)
         self.check_optional_callback(cx.test.test_collection.remove)
 
     @async_test_engine()
-    def test_unsafe_remove(self):
+    def test_unsafe_remove(self, done):
         # Test that unsafe removes with no callback still work
         self.assertEqual(1, self.sync_coll.find({'_id': 117}).count(),
             msg="Test setup should have a document with _id 117")
@@ -492,6 +509,7 @@ class MotorCollectionTest(MotorTest):
         coll = self.motor_connection(host, port).test.test_collection
         yield motor.Op(coll.remove, {'_id': 117})
         yield AssertEqual(0, coll.find({'_id': 117}).count)
+        done()
 
     def test_unsafe_insert(self):
         # Test that unsafe inserts with no callback still work
@@ -590,7 +608,7 @@ class MotorCollectionTest(MotorTest):
         ioloop.IOLoop.instance().start()
 
     @async_test_engine()
-    def test_map_reduce(self):
+    def test_map_reduce(self, done):
         # Count number of documents with even and odd _id
         expected_result = [{'_id': 0, 'value': 100}, {'_id': 1, 'value': 100}]
         map = bson.Code('function map() { emit(this._id % 2, 1); }')
@@ -633,9 +651,10 @@ class MotorCollectionTest(MotorTest):
 
         result.sort(key=lambda doc: doc['_id'])
         self.assertEqual(expected_result, result)
+        done()
 
     @async_test_engine()
-    def test_get_last_error_options(self):
+    def test_get_last_error_options(self, done):
         cx = motor.MotorConnection(host, port)
 
         # An implementation quirk of Motor, can't access properties until
@@ -672,9 +691,10 @@ class MotorCollectionTest(MotorTest):
             self.assertEqual(expected_safe, test_collection.safe)
             self.assertEqual(
                 gle_options, test_collection.get_lasterror_options())
+        done()
 
     @async_test_engine()
-    def test_indexes(self):
+    def test_indexes(self, done):
         cx = self.motor_connection(host, port)
         test_collection = cx.test.test_collection
 
@@ -695,9 +715,10 @@ class MotorCollectionTest(MotorTest):
         self.assertTrue(any([
             info['key'] == [('bar', 1)] for info in index_info.values()
         ]))
+        done()
 
         # Don't test drop_index or drop_indexes -- Synchro tests them
-
+        
 
 if __name__ == '__main__':
     unittest.main()

@@ -24,7 +24,7 @@ from nose.plugins.skip import SkipTest
 import pymongo
 import pymongo.errors
 import motor
-from test.motor import puritanical, eventually
+from test.motor import eventually
 
 if not motor.requirements_satisfied:
     raise SkipTest("Tornado or greenlet not installed")
@@ -58,6 +58,26 @@ port3 = int(os.environ.get("DB_PORT3", 27019))
 # TODO: error if a generator function isn't wrapped in async_test_engine -
 #    this can yield false passes because the function never gets to its asserts
 
+class AsyncTestRunner(gen.Runner):
+    def __init__(self, gen, timeout):
+        # Tornado 2.3 added a second argument to Runner()
+        super(AsyncTestRunner, self).__init__(gen, lambda: None)
+        self.timeout = timeout
+
+    def run(self):
+        loop = ioloop.IOLoop.instance()
+
+        try:
+            super(AsyncTestRunner, self).run()
+        except:
+            loop.remove_timeout(self.timeout)
+            loop.stop()
+            raise
+
+        if self.finished:
+            loop.remove_timeout(self.timeout)
+            loop.stop()
+
 
 def async_test_engine(timeout_sec=5, io_loop=None):
     if not isinstance(timeout_sec, int) and not isinstance(timeout_sec, float):
@@ -70,37 +90,24 @@ or:
         repr(timeout_sec)))
 
     timeout_sec = max(timeout_sec, float(os.environ.get('TIMEOUT_SEC', 0)))
+    is_done = [False]
 
     def decorator(func):
-        class AsyncTestRunner(gen.Runner):
-            def __init__(self, gen, timeout):
-                # Tornado 2.3 added an argument to Runner()
-                try:
-                    super(AsyncTestRunner, self).__init__(gen, lambda: None)
-                except TypeError:
-                    super(AsyncTestRunner, self).__init__(gen)
-                self.timeout = timeout
-
-            def run(self):
-                loop = io_loop or ioloop.IOLoop.instance()
-                # If loop isn't puritanical it could swallow an exception and
-                #   not marked a test failed that ought to be
-                assert isinstance(loop, puritanical.PuritanicalIOLoop)
-                try:
-                    super(AsyncTestRunner, self).run()
-                except Exception:
-                    loop.remove_timeout(self.timeout)
-                    loop.stop()
-                    raise
-
-                if self.finished:
-                    loop.remove_timeout(self.timeout)
-                    loop.stop()
+        def done():
+            is_done[0] = True
 
         @functools.wraps(func)
         def _async_test(self):
+            # Uninstall previous loop
+            # Note that AssertEventuallyTest also does this, but for the sake
+            # of making async_test_engine reusable I'm doing it here too.
+            if hasattr(ioloop.IOLoop, '_instance'):
+                del ioloop.IOLoop._instance
+
             loop = io_loop or ioloop.IOLoop.instance()
             assert not loop._stopped
+            if io_loop:
+                io_loop.install()
 
             def on_timeout():
                 loop.stop()
@@ -108,19 +115,25 @@ or:
 
             timeout = loop.add_timeout(time.time() + timeout_sec, on_timeout)
 
-            gen = func(self)
-            assert isinstance(gen, types.GeneratorType), (
-                "%s should be a generator, include a yield "
-                "statement" % func
-            )
+            try:
+                generator = func(self, done)
+                assert isinstance(generator, types.GeneratorType), (
+                    "%s should be a generator, include a yield "
+                    "statement" % func
+                )
 
-            runner = AsyncTestRunner(gen, timeout)
-            runner.run()
-            loop.start()
-            if not runner.finished:
-                # Something stopped the loop before func could finish or throw
-                # an exception.
-                raise Exception('%s did not finish' % func)
+                runner = AsyncTestRunner(generator, timeout)
+                runner.run()
+                loop.start()
+                if not runner.finished:
+                    # Something stopped the loop before func could finish or throw
+                    # an exception.
+                    raise Exception('%s did not finish' % func)
+
+                if not is_done[0]:
+                    raise Exception('%s did not call done()' % func)
+            finally:
+                del ioloop.IOLoop._instance # Uninstall
 
         return _async_test
     return decorator
@@ -168,10 +181,7 @@ class AssertEqual(gen.Task):
         return result
 
 
-class MotorTest(
-    puritanical.PuritanicalTest,
-    eventually.AssertEventuallyTest
-):
+class MotorTest(eventually.AssertEventuallyTest):
     longMessage = True # Used by unittest.TestCase
     ssl = False # If True, connect with SSL, skip if mongod isn't SSL
 

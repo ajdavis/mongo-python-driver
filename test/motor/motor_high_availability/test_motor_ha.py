@@ -32,14 +32,13 @@ from pymongo.errors import AutoReconnect, OperationFailure
 
 import motor
 from test.motor import (
-    async_test_engine, AssertEqual, puritanical, eventually, AssertRaises)
+    async_test_engine, AssertEqual, eventually, AssertRaises)
 
 # Override default 30-second interval for faster testing
 Monitor._refresh_interval = MONITOR_INTERVAL = 0.5
 
 
 class MotorTestSecondaryConnection(
-    puritanical.PuritanicalTest,
     eventually.AssertEventuallyTest
 ):
     def setUp(self):
@@ -49,7 +48,7 @@ class MotorTestSecondaryConnection(
         self.seed, self.name = res
 
     @async_test_engine(timeout_sec=60)
-    def test_secondary_connection(self):
+    def test_secondary_connection(self, done):
         self.c = motor.MotorReplicaSetConnection(
             self.seed, replicaSet=self.name).open_sync()
         self.assertTrue(bool(len(self.c.secondaries)))
@@ -116,6 +115,7 @@ class MotorTestSecondaryConnection(
         conn = motor.MotorConnection(host, port).open_sync()
         self.assertEqual(host, conn.host)
         self.assertEqual(port, conn.port)
+        done()
 
     def tearDown(self):
         ha_tools.kill_all_members()
@@ -124,7 +124,6 @@ class MotorTestSecondaryConnection(
 
 
 class MotorTestPassiveAndHidden(
-    puritanical.PuritanicalTest,
     eventually.AssertEventuallyTest
 ):
     def setUp(self):
@@ -139,7 +138,7 @@ class MotorTestPassiveAndHidden(
         self.seed, self.name = res
 
     @async_test_engine(timeout_sec=60)
-    def test_passive_and_hidden(self):
+    def test_passive_and_hidden(self, done):
         loop = IOLoop.instance()
         self.c = motor.MotorReplicaSetConnection(
             self.seed, replicaSet=self.name)
@@ -178,6 +177,8 @@ class MotorTestPassiveAndHidden(
             self.assertEqual(
                 cursor.delegate._Cursor__connection_id, self.c.primary)
 
+        done()
+
     def tearDown(self):
         ha_tools.kill_all_members()
         self.c.close()
@@ -185,7 +186,6 @@ class MotorTestPassiveAndHidden(
 
 
 class MotorTestHealthMonitor(
-    puritanical.PuritanicalTest,
     eventually.AssertEventuallyTest
 ):
     def setUp(self):
@@ -194,7 +194,7 @@ class MotorTestHealthMonitor(
         self.seed, self.name = res
 
     @async_test_engine(timeout_sec=60)
-    def test_primary_failure(self):
+    def test_primary_failure(self, done):
         loop = IOLoop.instance()
         c = motor.MotorReplicaSetConnection(self.seed, replicaSet=self.name)
         c.open_sync()
@@ -213,9 +213,10 @@ class MotorTestHealthMonitor(
             yield gen.Task(loop.add_timeout, time.time() + 1)
         else:
             self.fail("New primary not detected")
+        done()
 
     @async_test_engine(timeout_sec=60)
-    def test_secondary_failure(self):
+    def test_secondary_failure(self, done):
         loop = IOLoop.instance()
         c = motor.MotorReplicaSetConnection(self.seed, replicaSet=self.name)
         c.open_sync()
@@ -241,9 +242,10 @@ class MotorTestHealthMonitor(
             yield gen.Task(loop.add_timeout, time.time() + 1)
         else:
             self.fail("Dead secondary not detected")
+        done()
 
     @async_test_engine(timeout_sec=60)
-    def test_primary_stepdown(self):
+    def test_primary_stepdown(self, done):
         loop = IOLoop.instance()
         c = motor.MotorReplicaSetConnection(self.seed, replicaSet=self.name)
         c.open_sync()
@@ -260,6 +262,7 @@ class MotorTestHealthMonitor(
             yield gen.Task(loop.add_timeout, time.time() + 1)
         else:
             self.fail("New primary not detected")
+        done()
 
     def tearDown(self):
         super(MotorTestHealthMonitor, self).tearDown()
@@ -267,7 +270,6 @@ class MotorTestHealthMonitor(
 
 
 class MotorTestWritesWithFailover(
-    puritanical.PuritanicalTest,
     eventually.AssertEventuallyTest
 ):
     def setUp(self):
@@ -276,7 +278,7 @@ class MotorTestWritesWithFailover(
         self.seed, self.name = res
 
     @async_test_engine(timeout_sec=60)
-    def test_writes_with_failover(self):
+    def test_writes_with_failover(self, done):
         loop = IOLoop.instance()
         c = motor.MotorReplicaSetConnection(self.seed, replicaSet=self.name)
         c.open_sync()
@@ -306,13 +308,13 @@ class MotorTestWritesWithFailover(
         self.assertTrue(primary != c.primary)
         result = yield motor.Op(db.test.find_one, {'bar': 'baz'})
         self.assertEqual('baz', result['bar'])
+        done()
 
     def tearDown(self):
         ha_tools.kill_all_members()
 
 
 class MotorTestReadWithFailover(
-    puritanical.PuritanicalTest,
     eventually.AssertEventuallyTest
 ):
     def setUp(self):
@@ -321,7 +323,7 @@ class MotorTestReadWithFailover(
         self.seed, self.name = res
 
     @async_test_engine(timeout_sec=60)
-    def test_read_with_failover(self):
+    def test_read_with_failover(self, done):
         loop = IOLoop.instance()
         c = motor.MotorReplicaSetConnection(self.seed, replicaSet=self.name)
         c.open_sync()
@@ -346,13 +348,13 @@ class MotorTestReadWithFailover(
         # Primary failure shouldn't interrupt the cursor
         yield cursor.fetch_next
         self.assertEqual(10, cursor.delegate._Cursor__retrieved)
+        done()
 
     def tearDown(self):
         ha_tools.kill_all_members()
 
 
 class MotorTestReadPreference(
-    puritanical.PuritanicalTest,
     eventually.AssertEventuallyTest
 ):
     def setUp(self):
@@ -415,7 +417,7 @@ class MotorTestReadPreference(
         Member._host_to_ping_time.clear()
 
     @async_test_engine(timeout_sec=300)
-    def test_read_preference(self):
+    def test_read_preference(self, done):
         # This is long, but we put all the tests in one function to save time
         # on setUp, which takes about 30 seconds to bring up a replica set.
         # We pass through four states:
@@ -695,6 +697,7 @@ class MotorTestReadPreference(
         yield gen.Task(assertReadFrom, None, NEAREST, self.secondary_dc)
 
         self.clear_ping_times()
+        done()
 
     def tearDown(self):
         self.c.close()
@@ -703,7 +706,6 @@ class MotorTestReadPreference(
 
 
 class MotorTestReplicaSetAuth(
-    puritanical.PuritanicalTest,
     eventually.AssertEventuallyTest
 ):
     def setUp(self):
@@ -729,7 +731,7 @@ class MotorTestReplicaSetAuth(
         self.c.pymongo_ha_auth.add_user('user', 'userpass')
 
     @async_test_engine(timeout_sec=300)
-    def test_auth_during_failover(self):
+    def test_auth_during_failover(self, done):
         loop = IOLoop.instance()
         c = motor.MotorReplicaSetConnection(self.seed, replicaSet=self.name)
         c.open_sync()
@@ -757,6 +759,7 @@ class MotorTestReplicaSetAuth(
         res = yield motor.Op(db.foo.find_one)
         self.assertEqual('bar', res['foo'])
         c.close()
+        done()
 
     def tearDown(self):
         self.c.close()
@@ -764,7 +767,6 @@ class MotorTestReplicaSetAuth(
 
 
 class MotorTestMongosHighAvailability(
-    puritanical.PuritanicalTest,
     eventually.AssertEventuallyTest
 ):
     def setUp(self):
@@ -775,7 +777,7 @@ class MotorTestMongosHighAvailability(
         self.conn.drop_database(self.dbname)
 
     @async_test_engine(timeout_sec=300)
-    def test_mongos_ha(self):
+    def test_mongos_ha(self, done):
         conn = motor.MotorConnection(self.seed_list).open_sync()
         coll = conn[self.dbname].test
         res = yield motor.Op(coll.insert, {'foo': 'bar'})
@@ -807,6 +809,7 @@ class MotorTestMongosHighAvailability(
 
         # Find new mongos
         yield AssertEqual(1, coll.count)
+        done()
 
     def tearDown(self):
         self.conn.disconnect() # Force reconnect, things have happened ....

@@ -39,7 +39,7 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
         MotorTest.setUp(self)
 
     @async_test_engine()
-    def test_replica_set_connection(self):
+    def test_replica_set_connection(self, done):
         cx = motor.MotorReplicaSetConnection(
             '%s:%s' % (host, port), replicaSet=self.name)
 
@@ -61,6 +61,7 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
             motor.MotorReplicaSetMonitor))
         self.assertEqual(ioloop.IOLoop.instance(),
             cx.delegate._ReplicaSetConnection__monitor.io_loop)
+        done()
 
     def test_connection_callback(self):
         cx = motor.MotorReplicaSetConnection(
@@ -68,7 +69,7 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
         self.check_optional_callback(cx.open)
 
     @async_test_engine()
-    def test_open_sync(self):
+    def test_open_sync(self, done):
         loop = ioloop.IOLoop.instance()
         cx = motor.MotorReplicaSetConnection(
             '%s:%s' % (host, port), replicaSet=self.name)
@@ -95,6 +96,7 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
         doc = yield motor.Op(
             cx.test.test_collection.find_one, {'_id': 'test_open_sync'})
         self.assertEqual('test_open_sync', doc['_id'])
+        done()
 
     def test_open_sync_custom_io_loop(self):
         # Check that we can create a MotorReplicaSetConnection with a custom
@@ -114,7 +116,7 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
             cx.delegate._ReplicaSetConnection__monitor.io_loop)
 
         @async_test_engine(io_loop=loop)
-        def test(self):
+        def test(self, done):
             # Custom loop works?
             yield AssertEqual(
                 {'_id': 17, 's': hex(17)},
@@ -123,6 +125,8 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
             yield AssertEqual(
                 {'_id': 37, 's': hex(37)},
                 cx.test.test_collection.find_one, {'_id': 37})
+
+            done()
 
         test(self)
 
@@ -136,7 +140,7 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
         loop = puritanical.PuritanicalIOLoop()
 
         @async_test_engine(io_loop=loop)
-        def test(self):
+        def test(self, done):
             # Make sure we can do async things with the custom loop
             cx = motor.MotorReplicaSetConnection(
                 '%s:%s' % (host, port), replicaSet=self.name, io_loop=loop)
@@ -151,11 +155,12 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
             doc = yield motor.Op(
                 cx.test.test_collection.find_one, {'_id': 17})
             self.assertEqual({'_id': 17, 's': hex(17)}, doc)
+            done()
 
         test(self)
 
     @async_test_engine()
-    def test_sync_connection(self):
+    def test_sync_connection(self, done):
         class DictSubclass(dict):
             pass
 
@@ -185,8 +190,10 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
             {'_id': 5, 's': hex(5)},
             sync_cx.test.test_collection.find_one({'_id': 5}))
 
+        done()
+
     @async_test_engine()
-    def test_auto_reconnect_exception_when_read_preference_is_secondary(self):
+    def test_auto_reconnect_exception_when_read_preference_is_secondary(self, done):
         cx = motor.MotorReplicaSetConnection(
             '%s:%s' % (host, port), replicaSet=self.name)
 
@@ -203,6 +210,8 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
             yield AssertRaises(pymongo.errors.AutoReconnect, cursor.each)
         finally:
             iostream.IOStream.write = old_write
+
+        done()
 
 
 if __name__ == '__main__':

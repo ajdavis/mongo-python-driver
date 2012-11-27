@@ -41,81 +41,89 @@ class MotorGridFileTest(MotorTest):
     def setUp(self):
         super(MotorGridFileTest, self).setUp()
         self._reset()
-        self.db = self.motor_connection(host, port).open_sync().test
 
     def tearDown(self):
         self._reset()
         super(MotorGridFileTest, self).tearDown()
 
     @async_test_engine()
-    def test_grid_in_callback(self):
-        f = motor.MotorGridIn(self.db.fs, filename="test")
+    def test_grid_in_callback(self, done):
+        db = self.motor_connection(host, port).open_sync().test
+        f = motor.MotorGridIn(db.fs, filename="test")
         self.check_callback_handling(f.open, False)
-        f = yield motor.Op(motor.MotorGridIn(self.db.fs, filename="test").open)
+        f = yield motor.Op(motor.MotorGridIn(db.fs, filename="test").open)
         self.check_callback_handling(partial(f.set, 'name', 'value'), False)
         self.check_callback_handling(f.close, False)
         self.check_callback_handling(partial(f.write, 'a'), False)
         self.check_callback_handling(partial(f.writelines, ['a']), False)
+        done()
 
     @async_test_engine()
-    def test_grid_out_callback(self):
+    def test_grid_out_callback(self, done):
         # Some setup: we need to make an open GridOut
-        f = yield motor.Op(motor.MotorGridIn(self.db.fs, filename="test").open)
+        db = self.motor_connection(host, port).open_sync().test
+        f = yield motor.Op(motor.MotorGridIn(db.fs, filename="test").open)
         yield motor.Op(f.close)
 
-        g = motor.MotorGridOut(self.db.fs, f._id)
+        g = motor.MotorGridOut(db.fs, f._id)
         self.check_callback_handling(g.open, False)
 
-        g = yield motor.Op(motor.MotorGridOut(self.db.fs, f._id).open)
+        g = yield motor.Op(motor.MotorGridOut(db.fs, f._id).open)
         self.check_callback_handling(g.read, True)
         self.check_callback_handling(g.readline, True)
+        done()
 
     @async_test_engine()
-    def test_basic(self):
-        f = yield motor.Op(motor.MotorGridIn(self.db.fs, filename="test").open)
+    def test_basic(self, done):
+        db = self.motor_connection(host, port).open_sync().test
+        f = yield motor.Op(motor.MotorGridIn(db.fs, filename="test").open)
         yield motor.Op(f.write, b("hello world"))
         yield motor.Op(f.close)
-        self.assertEqual(1, (yield motor.Op(self.db.fs.files.find().count)))
-        self.assertEqual(1, (yield motor.Op(self.db.fs.chunks.find().count)))
+        self.assertEqual(1, (yield motor.Op(db.fs.files.find().count)))
+        self.assertEqual(1, (yield motor.Op(db.fs.chunks.find().count)))
 
-        g = yield motor.Op(motor.MotorGridOut(self.db.fs, f._id).open)
+        g = yield motor.Op(motor.MotorGridOut(db.fs, f._id).open)
         self.assertEqual(b("hello world"), (yield motor.Op(g.read)))
 
         # make sure it's still there...
-        g = yield motor.Op(motor.MotorGridOut(self.db.fs, f._id).open)
+        g = yield motor.Op(motor.MotorGridOut(db.fs, f._id).open)
         self.assertEqual(b("hello world"), (yield motor.Op(g.read)))
 
-        f = yield motor.Op(motor.MotorGridIn(self.db.fs, filename="test").open)
+        f = yield motor.Op(motor.MotorGridIn(db.fs, filename="test").open)
         yield motor.Op(f.close)
-        self.assertEqual(2, (yield motor.Op(self.db.fs.files.find().count)))
-        self.assertEqual(1, (yield motor.Op(self.db.fs.chunks.find().count)))
+        self.assertEqual(2, (yield motor.Op(db.fs.files.find().count)))
+        self.assertEqual(1, (yield motor.Op(db.fs.chunks.find().count)))
 
-        g = yield motor.Op(motor.MotorGridOut(self.db.fs, f._id).open)
+        g = yield motor.Op(motor.MotorGridOut(db.fs, f._id).open)
         self.assertEqual(b(""), (yield motor.Op(g.read)))
+        done()
 
     @async_test_engine()
-    def test_alternate_collection(self):
-        yield motor.Op(self.db.alt.files.remove)
-        yield motor.Op(self.db.alt.chunks.remove)
+    def test_alternate_collection(self, done):
+        db = self.motor_connection(host, port).open_sync().test
+        yield motor.Op(db.alt.files.remove)
+        yield motor.Op(db.alt.chunks.remove)
 
-        f = yield motor.Op(motor.MotorGridIn(self.db.alt).open)
+        f = yield motor.Op(motor.MotorGridIn(db.alt).open)
         yield motor.Op(f.write, b("hello world"))
         yield motor.Op(f.close)
 
-        self.assertEqual(1, (yield motor.Op(self.db.alt.files.find().count)))
-        self.assertEqual(1, (yield motor.Op(self.db.alt.chunks.find().count)))
+        self.assertEqual(1, (yield motor.Op(db.alt.files.find().count)))
+        self.assertEqual(1, (yield motor.Op(db.alt.chunks.find().count)))
 
-        g = yield motor.Op(motor.MotorGridOut(self.db.alt, f._id).open)
+        g = yield motor.Op(motor.MotorGridOut(db.alt, f._id).open)
         self.assertEqual(b("hello world"), (yield motor.Op(g.read)))
 
         # test that md5 still works...
         self.assertEqual("5eb63bbbe01eeed093cb22bb8f5acdc3", g.md5)
+        done()
 
     @async_test_engine()
-    def test_grid_in_default_opts(self):
+    def test_grid_in_default_opts(self, done):
+        db = self.motor_connection(host, port).open_sync().test
         self.assertRaises(TypeError, motor.MotorGridIn, "foo")
 
-        a = yield motor.Op(motor.MotorGridIn(self.db.fs).open)
+        a = yield motor.Op(motor.MotorGridIn(db.fs).open)
 
         self.assertTrue(isinstance(a._id, ObjectId))
         self.assertRaises(AttributeError, setattr, a, "_id", 5)
@@ -180,13 +188,15 @@ class MotorGridFileTest(MotorTest):
 
         self.assertEqual("d41d8cd98f00b204e9800998ecf8427e", a.md5)
         self.assertRaises(AttributeError, setattr, a, "md5", 5)
+        done()
 
     @async_test_engine()
-    def test_grid_in_custom_opts(self):
+    def test_grid_in_custom_opts(self, done):
         self.assertRaises(TypeError, motor.MotorGridIn, "foo")
 
+        db = self.motor_connection(host, port).open_sync().test
         a = yield motor.Op(
-            motor.MotorGridIn(self.db.fs, _id=5, filename="my_file",
+            motor.MotorGridIn(db.fs, _id=5, filename="my_file",
             contentType="text/html", chunkSize=1000, aliases=["foo"],
             metadata={"foo": 1, "bar": 2}, bar=3, baz="hello").open)
 
@@ -201,23 +211,25 @@ class MotorGridFileTest(MotorTest):
         self.assertRaises(AttributeError, getattr, a, "mike")
 
         b = yield motor.Op(
-            motor.MotorGridIn(self.db.fs,
+            motor.MotorGridIn(db.fs,
             content_type="text/html", chunk_size=1000, baz=100).open)
         self.assertEqual("text/html", b.content_type)
         self.assertEqual(1000, b.chunk_size)
         self.assertEqual(100, b.baz)
+        done()
 
     @async_test_engine()
-    def test_grid_out_default_opts(self):
+    def test_grid_out_default_opts(self, done):
         self.assertRaises(TypeError, motor.MotorGridOut, "foo")
 
-        gout = motor.MotorGridOut(self.db.fs, 5)
+        db = self.motor_connection(host, port).open_sync().test
+        gout = motor.MotorGridOut(db.fs, 5)
         yield AssertRaises(NoFile, gout.open)
 
-        a = yield motor.Op(motor.MotorGridIn(self.db.fs).open)
+        a = yield motor.Op(motor.MotorGridIn(db.fs).open)
         yield motor.Op(a.close)
 
-        b = yield motor.Op(motor.MotorGridOut(self.db.fs, a._id).open)
+        b = yield motor.Op(motor.MotorGridOut(db.fs, a._id).open)
 
         self.assertEqual(a._id, b._id)
         self.assertEqual(0, b.length)
@@ -232,16 +244,19 @@ class MotorGridFileTest(MotorTest):
                      "upload_date", "aliases", "metadata", "md5"]:
             self.assertRaises(AttributeError, setattr, b, attr, 5)
 
+        done()
+
     @async_test_engine()
-    def test_grid_out_custom_opts(self):
+    def test_grid_out_custom_opts(self, done):
+        db = self.motor_connection(host, port).open_sync().test
         one = yield motor.Op(
-            motor.MotorGridIn(self.db.fs, _id=5, filename="my_file",
+            motor.MotorGridIn(db.fs, _id=5, filename="my_file",
             contentType="text/html", chunkSize=1000, aliases=["foo"],
             metadata={"foo": 1, "bar": 2}, bar=3, baz="hello").open)
         yield motor.Op(one.write, b("hello world"))
         yield motor.Op(one.close)
 
-        two = yield motor.Op(motor.MotorGridOut(self.db.fs, 5).open)
+        two = yield motor.Op(motor.MotorGridOut(db.fs, 5).open)
 
         self.assertEqual(5, two._id)
         self.assertEqual(11, two.length)
@@ -257,46 +272,53 @@ class MotorGridFileTest(MotorTest):
                      "upload_date", "aliases", "metadata", "md5"]:
             self.assertRaises(AttributeError, setattr, two, attr, 5)
 
+        done()
+
     @async_test_engine()
-    def test_grid_out_file_document(self):
-        one = yield motor.Op(motor.MotorGridIn(self.db.fs).open)
+    def test_grid_out_file_document(self, done):
+        db = self.motor_connection(host, port).open_sync().test
+        one = yield motor.Op(motor.MotorGridIn(db.fs).open)
         yield motor.Op(one.write, b("foo bar"))
         yield motor.Op(one.close)
 
         two = yield motor.Op(motor.MotorGridOut(
-            self.db.fs,
-            file_document=(yield motor.Op(self.db.fs.files.find_one))).open)
+            db.fs,
+            file_document=(yield motor.Op(db.fs.files.find_one))).open)
 
         self.assertEqual(b("foo bar"), (yield motor.Op(two.read)))
 
         three = yield motor.Op(motor.MotorGridOut(
-            self.db.fs, 5,
-            file_document=(yield motor.Op(self.db.fs.files.find_one))).open)
+            db.fs, 5,
+            file_document=(yield motor.Op(db.fs.files.find_one))).open)
 
         self.assertEqual(b("foo bar"), (yield motor.Op(three.read)))
 
         yield AssertRaises(
-            NoFile, motor.MotorGridOut(self.db.fs, file_document={}).open)
+            NoFile, motor.MotorGridOut(db.fs, file_document={}).open)
+        done()
 
     @async_test_engine()
-    def test_write_file_like(self):
-        one = yield motor.Op(motor.MotorGridIn(self.db.fs).open)
+    def test_write_file_like(self, done):
+        db = self.motor_connection(host, port).open_sync().test
+        one = yield motor.Op(motor.MotorGridIn(db.fs).open)
         yield motor.Op(one.write, b("hello world"))
         yield motor.Op(one.close)
 
-        two = yield motor.Op(motor.MotorGridOut(self.db.fs, one._id).open)
+        two = yield motor.Op(motor.MotorGridOut(db.fs, one._id).open)
 
-        three = yield motor.Op(motor.MotorGridIn(self.db.fs).open)
+        three = yield motor.Op(motor.MotorGridIn(db.fs).open)
         yield motor.Op(three.write, two)
         yield motor.Op(three.close)
 
-        four = yield motor.Op(motor.MotorGridOut(self.db.fs, three._id).open)
+        four = yield motor.Op(motor.MotorGridOut(db.fs, three._id).open)
         self.assertEqual(b("hello world"), (yield motor.Op(four.read)))
+        done()
 
     @async_test_engine()
-    def test_set_after_close(self):
+    def test_set_after_close(self, done):
+        db = self.motor_connection(host, port).open_sync().test
         f = yield motor.Op(
-            motor.MotorGridIn(self.db.fs, _id="foo", bar="baz").open)
+            motor.MotorGridIn(db.fs, _id="foo", bar="baz").open)
 
         self.assertEqual("foo", f._id)
         self.assertEqual("baz", f.bar)
@@ -324,14 +346,15 @@ class MotorGridFileTest(MotorTest):
         yield motor.Op(f.set, "baz", "b")
         self.assertRaises(AttributeError, setattr, f, "upload_date", 5)
 
-        g = yield motor.Op(motor.MotorGridOut(self.db.fs, f._id).open)
+        g = yield motor.Op(motor.MotorGridOut(db.fs, f._id).open)
         self.assertEqual("a", g.bar)
         self.assertEqual("b", g.baz)
         # Versions 2.0.1 and older saved a _closed field for some reason.
         self.assertRaises(AttributeError, getattr, g, "_closed")
+        done()
 
     @async_test_engine()
-    def test_stream_to_handler(self):
+    def test_stream_to_handler(self, done):
         class MockRequestHandler(object):
             def __init__(self):
                 self.n_written = 0
@@ -342,7 +365,8 @@ class MotorGridFileTest(MotorTest):
             def flush(self):
                 pass
 
-        fs = yield motor.Op(motor.MotorGridFS(self.db).open)
+        db = self.motor_connection(host, port).open_sync().test
+        fs = yield motor.Op(motor.MotorGridFS(db).open)
 
         for content_length in (0, 1, 100, 100 * 1000):
             _id = yield motor.Op(fs.put, 'a' * content_length)
@@ -352,6 +376,7 @@ class MotorGridFileTest(MotorTest):
             self.assertEqual(content_length, handler.n_written)
             yield motor.Op(fs.delete, _id)
 
+        done()
 
 if __name__ == "__main__":
     unittest.main()

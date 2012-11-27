@@ -23,6 +23,8 @@ if not motor.requirements_satisfied:
 import unittest
 from functools import partial
 
+from tornado import ioloop
+
 from bson.py3compat import b, StringIO
 from gridfs.errors import FileExists, NoFile
 from pymongo.errors import AutoReconnect
@@ -30,7 +32,7 @@ from pymongo.read_preferences import ReadPreference
 
 from test.test_replica_set_connection import TestConnectionReplicaSetBase
 from test.motor import (
-    MotorTest, async_test_engine, host, port, AssertEqual, AssertRaises, puritanical)
+    MotorTest, async_test_engine, host, port, AssertEqual, AssertRaises)
 
 
 class MotorGridfsTest(MotorTest):
@@ -43,17 +45,17 @@ class MotorGridfsTest(MotorTest):
     def setUp(self):
         super(MotorGridfsTest, self).setUp()
         self._reset()
-        self.db = self.motor_connection(host, port).open_sync().test
 
     def tearDown(self):
         self._reset()
         super(MotorGridfsTest, self).tearDown()
 
     @async_test_engine()
-    def test_gridfs(self):
+    def test_gridfs(self, done):
         self.assertRaises(TypeError, motor.MotorGridFS, "foo")
         self.assertRaises(TypeError, motor.MotorGridFS, 5)
-        fs = yield motor.Op(motor.MotorGridFS(self.db).open)
+        db = self.motor_connection(host, port).open_sync().test
+        fs = yield motor.Op(motor.MotorGridFS(db).open)
 
         # new_file should be an already-open MotorGridIn.
         gin = yield motor.Op(fs.new_file, _id=1, filename='foo')
@@ -69,13 +71,15 @@ class MotorGridfsTest(MotorTest):
         self.assertTrue(gout.delegate)
         gout = yield motor.Op(fs.get_last_version, 'foo')
         self.assertTrue(gout.delegate)
+        done()
 
     @async_test_engine()
-    def test_gridfs_callback(self):
-        fs = motor.MotorGridFS(self.db)
+    def test_gridfs_callback(self, done):
+        db = self.motor_connection(host, port).open_sync().test
+        fs = motor.MotorGridFS(db)
         self.check_callback_handling(fs.open, False)
 
-        fs = yield motor.Op(motor.MotorGridFS(self.db).open)
+        fs = yield motor.Op(motor.MotorGridFS(db).open)
         self.check_callback_handling(fs.new_file, True)
         self.check_callback_handling(fs.get, True)
         self.check_callback_handling(fs.get_version, True)
@@ -84,12 +88,13 @@ class MotorGridfsTest(MotorTest):
         self.check_callback_handling(partial(fs.delete, 1), False)
         self.check_callback_handling(fs.list, True)
         self.check_callback_handling(fs.exists, True)
+        done()
 
     def test_custom_io_loop(self):
-        loop = puritanical.PuritanicalIOLoop()
+        loop = ioloop.IOLoop()
 
         @async_test_engine(io_loop=loop)
-        def test(self):
+        def test(self, done):
             cx = motor.MotorConnection(host, port, io_loop=loop)
             yield motor.Op(cx.open)
 
@@ -120,31 +125,35 @@ class MotorGridfsTest(MotorTest):
 
             gridout2 = yield motor.Op(fs.get_last_version, 'fn')
             yield AssertEqual('baz', gridout2.read)
+            done()
 
         test(self)
 
     @async_test_engine()
-    def test_basic(self):
-        fs = yield motor.Op(motor.MotorGridFS(self.db).open)
+    def test_basic(self, done):
+        db = self.motor_connection(host, port).open_sync().test
+        fs = yield motor.Op(motor.MotorGridFS(db).open)
         oid = yield motor.Op(fs.put, b("hello world"))
         out = yield motor.Op(fs.get, oid)
         yield AssertEqual(b("hello world"), out.read)
-        yield AssertEqual(1, self.db.fs.files.count)
-        yield AssertEqual(1, self.db.fs.chunks.count)
+        yield AssertEqual(1, db.fs.files.count)
+        yield AssertEqual(1, db.fs.chunks.count)
 
         yield motor.Op(fs.delete, oid)
         yield AssertRaises(NoFile, fs.get, oid)
-        yield AssertEqual(0, self.db.fs.files.count)
-        yield AssertEqual(0, self.db.fs.chunks.count)
+        yield AssertEqual(0, db.fs.files.count)
+        yield AssertEqual(0, db.fs.chunks.count)
 
         yield AssertRaises(NoFile, fs.get, "foo")
         yield AssertEqual("foo", fs.put, b("hello world"), _id="foo")
         gridout = yield motor.Op(fs.get, "foo")
         yield AssertEqual(b("hello world"), gridout.read)
+        done()
 
     @async_test_engine()
-    def test_list(self):
-        fs = yield motor.Op(motor.MotorGridFS(self.db).open)
+    def test_list(self, done):
+        db = self.motor_connection(host, port).open_sync().test
+        fs = yield motor.Op(motor.MotorGridFS(db).open)
         self.assertEqual([], (yield motor.Op(fs.list)))
         yield motor.Op(fs.put, b("hello world"))
         self.assertEqual([], (yield motor.Op(fs.list)))
@@ -155,20 +164,22 @@ class MotorGridfsTest(MotorTest):
 
         self.assertEqual(set(["mike", "test", "hello world"]),
                          set((yield motor.Op(fs.list))))
+        done()
 
     @async_test_engine()
-    def test_alt_collection(self):
-        alt = yield motor.Op(motor.MotorGridFS(self.db, 'alt').open)
+    def test_alt_collection(self, done):
+        db = self.motor_connection(host, port).open_sync().test
+        alt = yield motor.Op(motor.MotorGridFS(db, 'alt').open)
         oid = yield motor.Op(alt.put, b("hello world"))
         gridout = yield motor.Op(alt.get, oid)
         self.assertEqual(b("hello world"), (yield motor.Op(gridout.read)))
-        self.assertEqual(1, (yield motor.Op(self.db.alt.files.count)))
-        self.assertEqual(1, (yield motor.Op(self.db.alt.chunks.count)))
+        self.assertEqual(1, (yield motor.Op(db.alt.files.count)))
+        self.assertEqual(1, (yield motor.Op(db.alt.chunks.count)))
 
         alt.delete(oid)
         yield AssertRaises(NoFile, alt.get, oid)
-        self.assertEqual(0, (yield motor.Op(self.db.alt.files.count)))
-        self.assertEqual(0, (yield motor.Op(self.db.alt.chunks.count)))
+        self.assertEqual(0, (yield motor.Op(db.alt.files.count)))
+        self.assertEqual(0, (yield motor.Op(db.alt.chunks.count)))
 
         yield AssertRaises(NoFile, alt.get, "foo")
         oid = yield motor.Op(alt.put, b("hello world"), _id="foo")
@@ -182,25 +193,29 @@ class MotorGridfsTest(MotorTest):
 
         self.assertEqual(set(["mike", "test", "hello world"]),
                          set((yield motor.Op(alt.list))))
+        done()
 
     @async_test_engine()
-    def test_put_filelike(self):
-        fs = yield motor.Op(motor.MotorGridFS(self.db).open)
+    def test_put_filelike(self, done):
+        db = self.motor_connection(host, port).open_sync().test
+        fs = yield motor.Op(motor.MotorGridFS(db).open)
         oid = yield motor.Op(fs.put, StringIO(b("hello world")), chunk_size=1)
-        self.assertEqual(11, (yield motor.Op(self.db.fs.chunks.count)))
+        self.assertEqual(11, (yield motor.Op(db.fs.chunks.count)))
         gridout = yield motor.Op(fs.get, oid)
         self.assertEqual(b("hello world"), (yield motor.Op(gridout.read)))
+        done()
 
     @async_test_engine()
-    def test_put_duplicate(self):
-        fs = yield motor.Op(motor.MotorGridFS(self.db).open)
+    def test_put_duplicate(self, done):
+        db = self.motor_connection(host, port).open_sync().test
+        fs = yield motor.Op(motor.MotorGridFS(db).open)
         oid = yield motor.Op(fs.put, b("hello"))
         yield AssertRaises(FileExists, fs.put, "world", _id=oid)
-
+        done()
 
 class TestGridfsReplicaSet(MotorTest, TestConnectionReplicaSetBase):
     @async_test_engine()
-    def test_gridfs_replica_set(self):
+    def test_gridfs_replica_set(self, done):
         rsc = motor.MotorReplicaSetConnection(
             host=host, port=port,
             w=self.w, wtimeout=5000,
@@ -216,9 +231,10 @@ class TestGridfsReplicaSet(MotorTest, TestConnectionReplicaSetBase):
             self.assertEqual(b('foo'), content)
         finally:
             rsc.close()
+        done()
 
     @async_test_engine()
-    def test_gridfs_secondary(self):
+    def test_gridfs_secondary(self, done):
         primary_host, primary_port = self.primary
         primary_connection = motor.MotorConnection(
             primary_host, primary_port).open_sync()
@@ -242,6 +258,8 @@ class TestGridfsReplicaSet(MotorTest, TestConnectionReplicaSetBase):
 
             # This won't detect secondary, raises error
             yield AssertRaises(AutoReconnect, fs.put, b('foo'))
+
+        done()
 
     def tearDown(self):
         rsc = self._get_connection()
