@@ -1445,7 +1445,7 @@ class MotorCursor(MotorBase):
           ...
           >>> db.test.find()[50].each(callback)
 
-        An :class:`~pymongo.errors.IndexErrorIndexError` will be raised if
+        An :class:`~pymongo.errors.IndexError` will be raised if
         the index is negative or greater than the amount of documents in
         this cursor. Any limit previously applied to this cursor will be
         ignored.
