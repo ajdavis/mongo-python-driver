@@ -259,7 +259,10 @@ Threading and forking
 ---------------------
 
 Multithreading and forking are not supported; Motor is intended to be used in
-a single-threaded Tornado application.
+a single-threaded Tornado application. See Tornado's documentation on
+`running Tornado in production`_ to take advantage of multiple cores.
+
+.. _`running Tornado in production`: http://www.tornadoweb.org/documentation/overview.html#running-tornado-in-production
 
 Minor differences
 =================
