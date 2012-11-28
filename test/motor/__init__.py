@@ -41,9 +41,6 @@ except ImportError:
 
 
 # TODO: replicate asyncmongo's whole test suite?
-# TODO: check that sockets are returned to pool, or closed, or something
-# TODO: error if a generator function isn't wrapped in async_test_engine -
-#    this can yield false passes because the function never gets to its asserts
 
 class AsyncTestRunner(gen.Runner):
     def __init__(self, gen, timeout):
