@@ -457,27 +457,6 @@ class MotorCollectionTest(MotorTest):
         done()
 
     @async_test_engine()
-    def test_save_multiple(self, done):
-        # TODO: what are we testing here really?
-        cx = self.motor_connection(host, port)
-
-        for i in range(10):
-            cx.pymongo_test.test_collection.save(
-                {'_id': i + 500, 's': hex(i + 500)},
-                callback=(yield gen.Callback(key=i))
-            )
-
-        results = yield motor.WaitAllOps(range(10))
-
-        # TODO: doc that result, error are in result.args for all gen.engine
-        # yields
-
-        # Once all saves complete, results will be a list of _id's, from 500 to
-        # 509, but not necessarily in that order since we're motor
-        self.assertEqual(range(500, 510), sorted(results))
-        done()
-
-    @async_test_engine()
     def test_remove(self, done):
         # Remove a document twice, check that we get a success response first
         # time and an error the second time.
