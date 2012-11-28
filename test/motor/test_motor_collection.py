@@ -14,7 +14,7 @@
 
 """Test Motor, an asynchronous driver for MongoDB and Tornado."""
 
-import time
+import datetime
 import unittest
 
 import pymongo
@@ -104,7 +104,8 @@ class MotorCollectionTest(MotorTest):
         )
         done()
 
-    def test_each(self):
+    @async_test_engine()
+    def test_each(self, done):
         # 1. Open a connection.
         #
         # 2. test_collection has docs inserted in setUp(). Query for documents
@@ -122,6 +123,8 @@ class MotorCollectionTest(MotorTest):
             {'s': False}, # exclude 's' field
             sort=[('_id', 1)],
         ).batch_size(5)
+
+        each_done = yield gen.Callback('each_done')
 
         def callback(doc, error):
             if error:
@@ -141,10 +144,15 @@ class MotorCollectionTest(MotorTest):
                     self.get_open_cursors()
                 )
 
+            if not doc:
+                # Done
+                each_done()
+
         results = []
         cursor.each(callback)
-
-        self.assertEventuallyEqual(range(14), lambda: results)
+        yield gen.Wait('each_done')
+        self.assertEqual(range(14), results)
+        done()
 
     @async_test_engine()
     def test_find_where(self, done):
@@ -172,57 +180,51 @@ class MotorCollectionTest(MotorTest):
         # Ensure tearDown doesn't complain about open cursors
         self.wait_for_cursors()
 
-    def test_find_is_async(self):
+    @async_test_engine()
+    def test_find_is_async(self, done):
         # Confirm find() is async by launching two operations which will finish
         # out of order. Also test that MotorConnection doesn't reuse sockets
         # incorrectly.
         cx = self.motor_connection(host, port)
 
-        results = []
-
-        def callback(doc, error):
-            if error:
-                raise error
-            if doc:
-                results.append(doc)
-
         # Launch find operations for _id's 1 and 2 which will finish in order
         # 2, then 1.
-        loop = ioloop.IOLoop.instance()
+        results = []
 
-        now = time.time()
+        yield_points = [(yield gen.Callback(0)), (yield gen.Callback(1))]
+
+        def callback(result, error):
+            if result:
+                results.append(result)
+                yield_points.pop()()
 
         # This find() takes 0.5 seconds
-        loop.add_timeout(
-            now + 0.1,
-            lambda: cx.test.test_collection.find(
-                {'_id': 1, '$where': delay(0.5)},
-                fields={'s': True, '_id': False},
-            ).each(callback)
-        )
+        cx.test.test_collection.find(
+            {'_id': 1, '$where': delay(0.5)},
+            fields={'s': True, '_id': False}
+        ).limit(1).each(callback)
 
         # Very fast lookup
-        loop.add_timeout(
-            now + 0.2,
-            lambda: cx.test.test_collection.find(
-                {'_id': 2},
-                fields={'s': True, '_id': False},
-            ).each(callback)
-        )
+        cx.test.test_collection.find(
+            {'_id': 2},
+            fields={'s': True, '_id': False}
+        ).limit(1).each(callback)
+
+        yield gen.WaitAll([0, 1])
 
         # Results were appended in order 2, 1
-        self.assertEventuallyEqual(
+        self.assertEqual(
             [{'s': hex(s)} for s in (2, 1)],
-            lambda: results,
-            timeout_sec=2
-        )
+            results)
 
-        ioloop.IOLoop.instance().start()
-        self.wait_for_cursors()
+        done()
 
-    def test_find_and_cancel(self):
+    @async_test_engine()
+    def test_find_and_cancel(self, done):
         cx = self.motor_connection(host, port)
         results = []
+
+        yield_point = yield gen.Callback(0)
 
         def callback(doc, error):
             if error:
@@ -231,26 +233,24 @@ class MotorCollectionTest(MotorTest):
             results.append(doc)
 
             if len(results) == 2:
+                yield_point()
                 # cancel iteration
                 return False
 
         cursor = cx.test.test_collection.find(sort=[('s', 1)])
         cursor.each(callback)
-        self.assertEventuallyEqual(
+        yield gen.Wait(0)
+
+        # There are 200 docs, but we canceled after 2
+        self.assertEqual(
             [
                 {'_id': 0, 's': hex(0)},
                 {'_id': 1, 's': hex(1)},
             ],
-            lambda: results,
-        )
+            results)
 
-        ioloop.IOLoop.instance().start()
-
-        # There are 200 docs, but we canceled after 2
-        self.assertEqual(2, len(results))
-
-        cursor.close()
-        self.wait_for_cursors()
+        yield motor.Op(cursor.close)
+        done()
 
     @async_test_engine()
     def test_find_to_list(self, done):
@@ -274,10 +274,11 @@ class MotorCollectionTest(MotorTest):
         cx = self.motor_connection(host, port)
         self.check_required_callback(cx.test.test_collection.find_one)
 
-    def test_find_one_is_async(self):
+    @async_test_engine(timeout_sec=6)
+    def test_find_one_is_async(self, done):
         # Confirm find_one() is async by launching two operations which will
         # finish out of order.
-        results = []
+        cx = self.motor_connection(host, port)
 
         def callback(result, error):
             if error:
@@ -286,38 +287,35 @@ class MotorCollectionTest(MotorTest):
 
         # Launch 2 find_one operations for _id's 1 and 2, which will finish in
         # order 2 then 1.
-        loop = ioloop.IOLoop.instance()
+        results = []
 
-        cx = self.motor_connection(host, port)
+        yield_points = [(yield gen.Callback(0)), (yield gen.Callback(1))]
+
+        def callback(result, error):
+            if result:
+                results.append(result)
+                yield_points.pop()()
 
         # This find_one() takes 5 seconds
-        loop.add_timeout(
-            time.time() + 0.1,
-            lambda: cx.test.test_collection.find_one(
-                {'_id': 1, '$where': delay(5)},
-                fields={'s': True, '_id': False},
-                callback=callback
-            )
-        )
+        cx.test.test_collection.find_one(
+            {'_id': 1, '$where': delay(5)},
+            fields={'s': True, '_id': False},
+            callback=callback)
 
         # Very fast lookup
-        loop.add_timeout(
-            time.time() + 0.2,
-            lambda: cx.test.test_collection.find_one(
-                {'_id': 2},
-                fields={'s': True, '_id': False},
-                callback=callback
-            )
-        )
+        cx.test.test_collection.find_one(
+            {'_id': 2},
+            fields={'s': True, '_id': False},
+            callback=callback)
+
+        yield gen.WaitAll([0, 1])
 
         # Results were appended in order 2, 1
-        self.assertEventuallyEqual(
+        self.assertEqual(
             [{'s': hex(s)} for s in (2, 1)],
-            lambda: results,
-            timeout_sec=6
-        )
+            results)
 
-        ioloop.IOLoop.instance().start()
+        done()
 
     @async_test_engine()
     def test_update(self, done):
@@ -511,7 +509,8 @@ class MotorCollectionTest(MotorTest):
         yield AssertEqual(0, coll.find({'_id': 117}).count)
         done()
 
-    def test_unsafe_insert(self):
+    @async_test_engine()
+    def test_unsafe_insert(self, done):
         # Test that unsafe inserts with no callback still work
 
         # id 201 not present
@@ -522,28 +521,29 @@ class MotorCollectionTest(MotorTest):
             {'_id': 201})
 
         # the insert is eventually executed
-        self.assertEventuallyEqual(
-            1,
-            lambda: len(list(self.sync_db.test_collection.find({'_id': 201})))
-        )
+        loop = ioloop.IOLoop.instance()
+        while not self.sync_db.test_collection.find({'_id': 201}).count():
+            yield gen.Task(loop.add_timeout, datetime.timedelta(seconds=0.1))
 
-        ioloop.IOLoop.instance().start()
+        done()
 
-    def test_unsafe_save(self):
+    @async_test_engine()
+    def test_unsafe_save(self, done):
         # Test that unsafe saves with no callback still work
         self.motor_connection(host, port).test.test_collection.save(
             {'_id': 201})
 
-        self.assertEventuallyEqual(
-            1,
-            lambda: len(list(self.sync_db.test_collection.find({'_id': 201})))
-        )
+        loop = ioloop.IOLoop.instance()
+        while not self.sync_db.test_collection.find({'_id': 201}).count():
+            yield gen.Task(loop.add_timeout, datetime.timedelta(seconds=0.1))
 
-        ioloop.IOLoop.instance().start()
+        done()
 
-    def test_nested_callbacks(self):
+    @async_test_engine()
+    def test_nested_callbacks(self, done):
         cx = self.motor_connection(host, port)
         results = [0]
+        yield_point = yield gen.Callback(0)
 
         def callback(result, error):
             if error:
@@ -559,23 +559,25 @@ class MotorCollectionTest(MotorTest):
                     {'_id': 1},
                     {'s': False},
                 ).each(callback)
+            else:
+                yield_point()
 
         cx.test.test_collection.find(
             {'_id': 1},
             {'s': False},
         ).each(callback)
 
-        self.assertEventuallyEqual(
-            [1000],
-            lambda: results,
-            timeout_sec=30
-        )
+        yield gen.Wait(0)
 
-        ioloop.IOLoop.instance().start()
+        self.assertEqual(
+            1000,
+            results[0])
+        done()
 
-    def test_nested_callbacks_2(self):
+    @async_test_engine()
+    def test_nested_callbacks_2(self, done):
         cx = motor.MotorConnection(host, port)
-        results = []
+        yield_point = yield gen.Callback(0)
 
         def connected(cx, error):
             if error:
@@ -596,16 +598,11 @@ class MotorCollectionTest(MotorTest):
             cx.test.test.remove({'_id': 201}, callback=removed)
 
         def removed(result, error):
-            results.append('done')
+            yield_point()
 
         cx.open(connected)
-
-        self.assertEventuallyEqual(
-            ['done'],
-            lambda: results
-        )
-
-        ioloop.IOLoop.instance().start()
+        yield gen.Wait(0)
+        done()
 
     @async_test_engine()
     def test_map_reduce(self, done):

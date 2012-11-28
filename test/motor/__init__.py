@@ -18,13 +18,13 @@ import functools
 import os
 import time
 import types
+import unittest
 
 from nose.plugins.skip import SkipTest
 
 import pymongo
 import pymongo.errors
 import motor
-from test.motor import eventually
 
 if not motor.requirements_satisfied:
     raise SkipTest("Tornado or greenlet not installed")
@@ -99,8 +99,6 @@ or:
         @functools.wraps(func)
         def _async_test(self):
             # Uninstall previous loop
-            # Note that AssertEventuallyTest also does this, but for the sake
-            # of making async_test_engine reusable I'm doing it here too.
             if hasattr(ioloop.IOLoop, '_instance'):
                 del ioloop.IOLoop._instance
 
@@ -181,7 +179,7 @@ class AssertEqual(gen.Task):
         return result
 
 
-class MotorTest(eventually.AssertEventuallyTest):
+class MotorTest(unittest.TestCase):
     longMessage = True # Used by unittest.TestCase
     ssl = False # If True, connect with SSL, skip if mongod isn't SSL
 

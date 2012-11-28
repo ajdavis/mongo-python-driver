@@ -31,16 +31,13 @@ from pymongo.connection import _partition_node
 from pymongo.errors import AutoReconnect, OperationFailure
 
 import motor
-from test.motor import (
-    async_test_engine, AssertEqual, eventually, AssertRaises)
+from test.motor import async_test_engine, AssertEqual, AssertRaises
 
 # Override default 30-second interval for faster testing
 Monitor._refresh_interval = MONITOR_INTERVAL = 0.5
 
 
-class MotorTestSecondaryConnection(
-    eventually.AssertEventuallyTest
-):
+class MotorTestSecondaryConnection(unittest.TestCase):
     def setUp(self):
         super(MotorTestSecondaryConnection, self).setUp()
         members = [{}, {}, {'arbiterOnly': True}]
@@ -123,9 +120,7 @@ class MotorTestSecondaryConnection(
         super(MotorTestSecondaryConnection, self).tearDown()
 
 
-class MotorTestPassiveAndHidden(
-    eventually.AssertEventuallyTest
-):
+class MotorTestPassiveAndHidden(unittest.TestCase):
     def setUp(self):
         super(MotorTestPassiveAndHidden, self).setUp()
         members = [{},
@@ -185,9 +180,7 @@ class MotorTestPassiveAndHidden(
         super(MotorTestPassiveAndHidden, self).tearDown()
 
 
-class MotorTestHealthMonitor(
-    eventually.AssertEventuallyTest
-):
+class MotorTestHealthMonitor(unittest.TestCase):
     def setUp(self):
         super(MotorTestHealthMonitor, self).setUp()
         res = ha_tools.start_replica_set([{}, {}, {}])
@@ -269,9 +262,7 @@ class MotorTestHealthMonitor(
         ha_tools.kill_all_members()
 
 
-class MotorTestWritesWithFailover(
-    eventually.AssertEventuallyTest
-):
+class MotorTestWritesWithFailover(unittest.TestCase):
     def setUp(self):
         super(MotorTestWritesWithFailover, self).setUp()
         res = ha_tools.start_replica_set([{}, {}, {}])
@@ -314,9 +305,7 @@ class MotorTestWritesWithFailover(
         ha_tools.kill_all_members()
 
 
-class MotorTestReadWithFailover(
-    eventually.AssertEventuallyTest
-):
+class MotorTestReadWithFailover(unittest.TestCase):
     def setUp(self):
         super(MotorTestReadWithFailover, self).setUp()
         res = ha_tools.start_replica_set([{}, {}, {}])
@@ -354,9 +343,7 @@ class MotorTestReadWithFailover(
         ha_tools.kill_all_members()
 
 
-class MotorTestReadPreference(
-    eventually.AssertEventuallyTest
-):
+class MotorTestReadPreference(unittest.TestCase):
     def setUp(self):
         super(MotorTestReadPreference, self).setUp()
         members = [
@@ -705,9 +692,7 @@ class MotorTestReadPreference(
         self.clear_ping_times()
 
 
-class MotorTestReplicaSetAuth(
-    eventually.AssertEventuallyTest
-):
+class MotorTestReplicaSetAuth(unittest.TestCase):
     def setUp(self):
         super(MotorTestReplicaSetAuth, self).setUp()
         members = [
@@ -766,9 +751,7 @@ class MotorTestReplicaSetAuth(
         ha_tools.kill_all_members()
 
 
-class MotorTestMongosHighAvailability(
-    eventually.AssertEventuallyTest
-):
+class MotorTestMongosHighAvailability(unittest.TestCase):
     def setUp(self):
         super(MotorTestMongosHighAvailability, self).setUp()
         self.seed_list = ha_tools.create_sharded_cluster()

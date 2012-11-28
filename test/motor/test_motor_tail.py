@@ -59,24 +59,31 @@ class MotorTailTest(MotorTest):
         return t
 
     # Used by test_tail, test_tail_drop_collection, etc.
-    def each(self, results, n_expected, result, error):
+    def each(self, results, n_expected, callback, result, error):
         if error:
             results.append(type(error))
         elif result:
             results.append(result)
+            if len(results) != n_expected:
+                # Continue
+                return
 
-        if len(results) == n_expected:
-            # Cancel iteration
-            results.append('cancelled')
-            return False
+        # Cancel iteration
+        callback()
+        return False
 
-    def test_tail(self):
-        pauses = (1, 0, 1, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0.1, 0.1, 0, 0)
+    # Need a longish pause to ensure tail() recovers when cursor times out and
+    # returns None
+    tail_pauses = (
+        1, 0, 1, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0.1, 0.1, 0, 0)
 
-        t = self.start_insertion_thread(pauses)
-
+    @async_test_engine(timeout_sec=sum(tail_pauses) + 1)
+    def test_tail(self, done):
+        t = self.start_insertion_thread(self.tail_pauses)
         results = []
-        each = functools.partial(self.each, results, len(pauses))
+        each = functools.partial(
+            self.each, results, len(self.tail_pauses),
+            (yield gen.Callback('done')))
 
         test_db = self.motor_connection(host, port).test
         capped = test_db.capped
@@ -84,43 +91,38 @@ class MotorTailTest(MotorTest):
         # Note we do *not* pass tailable or await_data to find(), the
         # convenience method handles it for us.
         capped.find().tail(each)
-
-        self.assertEventuallyEqual(
+        yield gen.Wait('done')
+        self.assertEqual(
             results,
-            lambda: [{'_id': i} for i in range(len(pauses))] + ['cancelled'],
-            timeout_sec=sum(pauses) + 1
-        )
+            [{'_id': i} for i in range(len(self.tail_pauses))])
 
-        ioloop.IOLoop.instance().start()
         t.join()
-        self.wait_for_cursors()
+        done()
 
-    def test_tail_drop_collection(self):
+    drop_collection_pauses = (0, 0, 1, 'drop', 1, 0, 0)
+
+    @async_test_engine(timeout_sec=10)
+    def test_tail_drop_collection(self, done):
         # Ensure tail() throws error when its collection is dropped
-        pauses = (0, 0, 1, 'drop', 1, 0, 0)
-        t = self.start_insertion_thread(pauses)
+        t = self.start_insertion_thread(self.drop_collection_pauses)
 
         results = []
-        each = functools.partial(self.each, results, len(pauses) - 1)
+        each = functools.partial(
+            self.each, results, len(self.drop_collection_pauses),
+            (yield gen.Callback('done')))
 
         test_db = self.motor_connection(host, port).test
         capped = test_db.capped
         capped.find().tail(each)
+        yield gen.Wait('done')
 
         # Don't assume that the first 3 results before the drop will be
         # recorded -- dropping a collection kills the cursor even if not
         # fully iterated.
-        self.assertEventuallyEqual(
-            True,
-            lambda: (
-                OperationFailure in results
-                and 'cancelled' not in results),
-            timeout_sec=10
-        )
-
-        ioloop.IOLoop.instance().start()
+        self.assertTrue(OperationFailure in results)
+        self.assertFalse('cancelled' in results)
         t.join()
-        self.wait_for_cursors()
+        done()
 
     @async_test_engine()
     def test_tail_uncapped_collection(self, done):
@@ -130,30 +132,30 @@ class MotorTailTest(MotorTest):
         yield AssertRaises(
             OperationFailure,
             uncapped.find().tail)
+
         done()
 
-    def test_tail_nonempty_collection(self):
+    @async_test_engine()
+    def test_tail_nonempty_collection(self, done):
         self.sync_db.capped.insert([{'_id': -2}, {'_id': -1}], safe=True)
 
         pauses = (0, 0, 1, 0, 0)
         t = self.start_insertion_thread(pauses)
 
         results = []
-        each = functools.partial(self.each, results, len(pauses) + 2)
+        each = functools.partial(
+            self.each, results, len(pauses) + 2, (yield gen.Callback('done')))
 
         test_db = self.motor_connection(host, port).test
         capped = test_db.capped
         capped.find().tail(each)
+        yield gen.Wait('done')
+        self.assertEqual(
+            [{'_id': i} for i in range(-2, len(pauses))],
+            results)
 
-        self.assertEventuallyEqual(
-            [{'_id': i} for i in range(-2, len(pauses))] + ['cancelled'],
-            lambda: results,
-            timeout_sec=sum(pauses) + 1
-        )
-
-        ioloop.IOLoop.instance().start()
         t.join()
-        self.wait_for_cursors()
+        done()
 
     @async_test_engine()
     def test_tail_gen(self, done):

@@ -259,42 +259,28 @@ class MotorConnectionTest(MotorTest):
         drop_all()
         done()
 
-    def test_timeout(self):
+    @async_test_engine()
+    def test_timeout(self, done):
         # Launch two slow find_ones. The one with a timeout should get an error
-        loop = ioloop.IOLoop.instance()
         no_timeout = self.motor_connection(host, port)
         timeout = self.motor_connection(host, port, socketTimeoutMS=100)
+        query = {'$where': delay(0.5), '_id': 1}
 
-        results = []
-        query = {
-            '$where': delay(0.5),
-            '_id': 1,
-        }
+        timeout.test.test_collection.find_one(
+            query, callback=(yield gen.Callback('timeout')))
 
-        def callback(result, error):
-            results.append({'result': result, 'error': error})
+        no_timeout.test.test_collection.find_one(
+            query, callback=(yield gen.Callback('no_timeout')))
 
-        no_timeout.test.test_collection.find_one(query, callback=callback)
-        timeout.test.test_collection.find_one(query, callback=callback)
+        timeout_result, no_timeout_result = yield gen.WaitAll(
+            ['timeout', 'no_timeout'])
 
-        self.assertEventuallyEqual(
-            True,
-            lambda: isinstance(
-                results[0]['error'],
-                pymongo.errors.AutoReconnect
-            ) and str(results[0]['error']) == 'timed out'
-        )
+        self.assertEqual(str(timeout_result.args[1]), 'timed out')
+        self.assertTrue(
+            isinstance(timeout_result.args[1], pymongo.errors.AutoReconnect))
 
-        self.assertEventuallyEqual(
-            {'_id':1, 's':hex(1)},
-            lambda: results[1]['result']
-        )
-
-        loop.start()
-
-        # Make sure the delay completes before we call tearDown() and try to
-        # drop the collection
-        time.sleep(0.5)
+        self.assertEqual({'_id':1, 's':hex(1)}, no_timeout_result.args[0])
+        done()
 
     @async_test_engine()
     def test_connection_failure(self, done):
@@ -354,8 +340,8 @@ class MotorConnectionTest(MotorTest):
         for method in 'start_request', 'in_request', 'end_request':
             self.assertRaises(NotImplementedError, getattr(cx, method))
 
-    def test_high_concurrency(self):
-        loop = ioloop.IOLoop.instance()
+    @async_test_engine()
+    def test_high_concurrency(self, done):
         self.sync_db.insert_collection.drop()
         self.assertEqual(200, self.sync_coll.count())
         cx = self.motor_connection(host, port).open_sync()
@@ -363,43 +349,35 @@ class MotorConnectionTest(MotorTest):
 
         concurrency = 100
         ndocs = [0]
-        ninserted = [0]
+        insert_yield_point = yield gen.Callback('insert')
 
-        def each(result, error):
-            if error:
-                raise error
-
-            # Final call to each() has result None
-            if result:
+        @gen.engine
+        def find(callback):
+            cursor = collection.find()
+            while (yield cursor.fetch_next):
+                cursor.next_object()
                 ndocs[0] += 1
 
                 # Part-way through, start an insert
                 if ndocs[0] == int((200 * concurrency) / 3):
-                    cx.test.insert_collection.insert(
-                        {'foo': 'bar'}, callback=inserted)
+                    insert(callback=insert_yield_point)
+            callback()
 
-        for _ in range(concurrency):
-            collection.find().each(each)
+        @gen.engine
+        def insert(callback):
+            for i in range(100):
+                yield motor.Op(cx.test.insert_collection.insert, {'foo': 'bar'})
+            callback()
 
-        def inserted(result, error):
-            if error:
-                raise error
+        for i in range(concurrency):
+            find(callback=(yield gen.Callback(i)))
 
-            ninserted[0] += 1
-            if ninserted[0] < 100:
-                cx.test.insert_collection.insert(
-                    {'foo': 'bar'}, callback=inserted)
-
-        self.assertEventuallyEqual(
-            200 * concurrency, lambda: ndocs[0], timeout_sec=60)
-
-        self.assertEventuallyEqual(
-            100, lambda: ninserted[0], timeout_sec=60)
-
-        loop.start()
-
+        yield gen.WaitAll(range(concurrency))
+        yield gen.Wait('insert')
+        self.assertEqual(200 * concurrency, ndocs[0])
         self.assertEqual(100, self.sync_db.insert_collection.count())
         self.sync_db.insert_collection.drop()
+        done()
 
 
 if __name__ == '__main__':
