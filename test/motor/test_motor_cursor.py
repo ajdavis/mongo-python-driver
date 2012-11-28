@@ -78,13 +78,21 @@ class MotorCursorTest(MotorTest):
     def test_fetch_next(self, done):
         coll = self.motor_connection(host, port).pymongo_test.test_collection
         # 200 results, only including _id field, sorted by _id
-        cursor = coll.find({}, {'_id': 1}).sort([('_id', pymongo.ASCENDING)])
+        cursor = coll.find({}, {'_id': 1}).sort(
+            [('_id', pymongo.ASCENDING)]).batch_size(75)
+
         self.assertEqual(None, cursor.cursor_id)
         self.assertEqual(None, cursor.next_object()) # Haven't fetched yet
         i = 0
         while (yield cursor.fetch_next):
             self.assertEqual({'_id': i}, cursor.next_object())
             i += 1
+            # With batch_size 75 and 200 results, cursor should be exhausted on
+            # the server by third fetch
+            if i <= 150:
+                self.assertNotEqual(0, cursor.cursor_id)
+            else:
+                self.assertEqual(0, cursor.cursor_id)
 
         self.assertEqual(False, (yield cursor.fetch_next))
         self.assertEqual(None, cursor.next_object())
@@ -255,6 +263,56 @@ class MotorCursorTest(MotorTest):
         # Start the find(), the callback will close the cursor
         loop.start()
         self.assertEqual(self.open_cursors, self.get_open_cursors())
+
+    @async_test_engine()
+    def test_each(self, done):
+        # 1. Open a connection.
+        #
+        # 2. test_collection has docs inserted in setUp(). Query for documents
+        # with _id 0 through 13, in batches of 5: 0-4, 5-9, 10-13.
+        #
+        # 3. For each document, check if the cursor has been closed. I expect
+        # it to remain open until we've retrieved doc with _id 10. Oddly, Mongo
+        # doesn't close the cursor and return cursor_id 0 if the final batch
+        # exactly contains the last document -- the last batch size has to go
+        # at least one *past* the final document in order to close the cursor.
+        connection = self.motor_connection(host, port)
+
+        cursor = connection.pymongo_test.test_collection.find(
+            {'_id': {'$lt':14}},
+            {'s': False}, # exclude 's' field
+            sort=[('_id', 1)],
+        ).batch_size(5)
+
+        each_done = yield gen.Callback('each_done')
+
+        def callback(doc, error):
+            if error:
+                raise error
+
+            if doc:
+                results.append(doc['_id'])
+
+            if doc and doc['_id'] < 10:
+                self.assertEqual(
+                    1 + self.open_cursors,
+                    self.get_open_cursors()
+                )
+            else:
+                self.assertEqual(
+                    self.open_cursors,
+                    self.get_open_cursors()
+                )
+
+            if not doc:
+                # Done
+                each_done()
+
+        results = []
+        cursor.each(callback)
+        yield gen.Wait('each_done')
+        self.assertEqual(range(14), results)
+        done()
 
     def test_each_cancel(self):
         loop = ioloop.IOLoop.instance()
