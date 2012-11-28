@@ -45,7 +45,6 @@ except ImportError:
 #     Jenkins environment
 # TODO: check that sockets are returned to pool, or closed, or something
 # TODO: test unsafe remove
-# TODO: test deeply-nested callbacks
 # TODO: error if a generator function isn't wrapped in async_test_engine -
 #    this can yield false passes because the function never gets to its asserts
 
