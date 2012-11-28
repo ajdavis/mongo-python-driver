@@ -14,6 +14,7 @@
 
 """Test Motor, an asynchronous driver for MongoDB and Tornado."""
 
+import datetime
 import functools
 import threading
 import time
@@ -29,7 +30,6 @@ from test.test_connection import host, port
 from test.motor import MotorTest, async_test_engine, AssertRaises
 from pymongo.errors import OperationFailure
 
-# TODO: test tailing empty collection
 
 class MotorTailTest(MotorTest):
     def setUp(self):
@@ -96,6 +96,30 @@ class MotorTailTest(MotorTest):
         self.assertEqual(
             results,
             [{'_id': i} for i in range(len(self.tail_pauses))])
+
+        t.join()
+        done()
+
+    @async_test_engine()
+    def test_tail_empty(self, done):
+        pauses = (0, 1)
+        results = []
+        each = functools.partial(
+            self.each, results, len(pauses),
+            (yield gen.Callback('done')))
+
+        test_db = self.motor_connection(host, port).pymongo_test
+        capped = test_db.capped
+
+        capped.find().tail(each)
+        loop = ioloop.IOLoop.instance()
+        # Tail empty collection for a while before inserting
+        yield gen.Task(loop.add_timeout, datetime.timedelta(seconds=2))
+        t = self.start_insertion_thread(pauses)
+        yield gen.Wait('done')
+        self.assertEqual(
+            results,
+            [{'_id': i} for i in range(len(pauses))])
 
         t.join()
         done()
