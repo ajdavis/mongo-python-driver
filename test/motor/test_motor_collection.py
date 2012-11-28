@@ -506,12 +506,21 @@ class MotorCollectionTest(MotorTest):
     @async_test_engine()
     def test_unsafe_remove(self, done):
         # Test that unsafe removes with no callback still work
-        self.assertEqual(1, self.sync_coll.find({'_id': 117}).count(),
-            msg="Test setup should have a document with _id 117")
+        def ndocs():
+            return self.sync_coll.find(
+                {'_id': {'$gte': 115, '$lte': 117}}).count()
 
+        self.assertEqual(3, ndocs(), msg="Test setup should have 3 documents")
         coll = self.motor_connection(host, port).pymongo_test.test_collection
-        yield motor.Op(coll.remove, {'_id': 117})
-        yield AssertEqual(0, coll.find({'_id': 117}).count)
+        # Unsafe removes
+        coll.remove({'_id': 115})
+        coll.remove({'_id': 116})
+        coll.remove({'_id': 117})
+        # Wait for them to complete
+        loop = ioloop.IOLoop.instance()
+        while ndocs():
+            yield gen.Task(loop.add_timeout, datetime.timedelta(seconds=0.1))
+
         done()
 
     @async_test_engine()
