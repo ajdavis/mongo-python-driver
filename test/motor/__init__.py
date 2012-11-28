@@ -112,8 +112,8 @@ or:
                 runner.run()
                 loop.start()
                 if not runner.finished:
-                    # Something stopped the loop before func could finish or throw
-                    # an exception.
+                    # Something stopped the loop before func could finish or
+                    # throw an exception.
                     raise Exception('%s did not finish' % func)
 
                 if not is_done[0]:
@@ -250,9 +250,9 @@ class MotorTest(unittest.TestCase):
         actual_open_cursors = self.get_open_cursors()
 
         if actual_open_cursors != self.open_cursors:
-            # Run the loop for a little bit: An unfortunately convoluted means of
-            # letting all cursors close themselves before we finish the test, so
-            # tearDown() doesn't complain about cursors left open.
+            # Run the loop for a little bit: An unfortunately convoluted means
+            # of letting all cursors close themselves before we finish the test,
+            # so tearDown() doesn't complain about cursors left open.
             loop = ioloop.IOLoop.instance()
             loop.add_timeout(time.time() + 0.25, loop.stop)
             loop.start()

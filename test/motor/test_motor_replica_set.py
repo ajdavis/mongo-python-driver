@@ -193,7 +193,9 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
         done()
 
     @async_test_engine()
-    def test_auto_reconnect_exception_when_read_preference_is_secondary(self, done):
+    def test_auto_reconnect_exception_when_read_preference_is_secondary(
+        self, done
+    ):
         cx = motor.MotorReplicaSetConnection(
             '%s:%s' % (host, port), replicaSet=self.name)
 

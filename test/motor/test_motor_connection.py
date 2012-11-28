@@ -210,8 +210,8 @@ class MotorConnectionTest(MotorTest):
                     {'dropDatabase': 1}, network_timeout=30)
 
             if not is_ms:
-                # Due to SERVER-2329, databases may not disappear from a master in a
-                # master-slave pair
+                # Due to SERVER-2329, databases may not disappear from a master
+                # in a master-slave pair
                 db_names = self.sync_cx.database_names()
                 for test_db_name in test_db_names:
                     self.assertFalse(
