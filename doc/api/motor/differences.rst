@@ -220,14 +220,40 @@ As in PyMongo, the default ``connectTimeoutMS`` is 20 seconds, and the default
 Requests
 --------
 
-Motor does not support :doc:`requests </examples/requests>`. Requests are
-intended in PyMongo to ensure that a series of operations are performed in
-order by the MongoDB server, even with unacknowledged writes. In Motor,
-ordering can be guaranteed by doing acknowledged writes. Register a callback
-for each operation and perform the next operation in the callback:
+PyMongo provides :doc:`requests </examples/requests>` to ensure that a series
+of operations are performed in order by the MongoDB server, even with
+unacknowledged writes. Motor does not support requests, so the only way to
+guarantee order is by doing acknowledged writes. Register a callback
+for each operation and perform the next operation in the callback::
+
+    def inserted(result, error):
+        if error:
+            raise error
+
+        db.users.find_one({'name': 'Ben'}, callback=found_one)
+
+    def found_one(result, error):
+        if error:
+            raise error
+
+        print result
+
+    # Acknowledged insert:
+    db.users.insert({'name': 'Ben', 'author': 'Tornado'}, callback=inserted)
+
+This ensures ``find_one`` isn't run until ``insert`` has been acknowledged by
+the server. Obviously, this code is improved by `tornado.gen`_::
+
+    @gen.engine
+    def f():
+        yield motor.Op(db.users.insert, {'name': 'Ben', 'author': 'Tornado'})
+        result = yield motor.Op(db.users.find_one, {'name': 'Ben'})
+        print result
 
 Motor ignores the ``auto_start_request`` parameter to
 :class:`~motor.MotorConnection` or :class:`~motor.MotorReplicaSetConnection`.
+
+.. _tornado.gen: http://www.tornadoweb.org/documentation/gen.html
 
 Threading and forking
 ---------------------
