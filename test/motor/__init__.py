@@ -261,10 +261,9 @@ class MotorTest(unittest.TestCase):
 
 class MotorTestBasic(MotorTest):
     def test_repr(self):
-        # TODO: replace w/ assertTrue
         cx = self.motor_connection(host, port)
-        self.assert_(repr(cx).startswith('MotorConnection'))
+        self.assertTrue(repr(cx).startswith('MotorConnection'))
         db = cx.pymongo_test
-        self.assert_(repr(db).startswith('MotorDatabase'))
+        self.assertTrue(repr(db).startswith('MotorDatabase'))
         coll = db.test_collection
-        self.assert_(repr(coll).startswith('MotorCollection'))
+        self.assertTrue(repr(coll).startswith('MotorCollection'))

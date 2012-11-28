@@ -335,7 +335,7 @@ class MotorCollectionTest(MotorTest):
         results = []
 
         def callback(result, error):
-            self.assert_(isinstance(error, DuplicateKeyError))
+            self.assertTrue(isinstance(error, DuplicateKeyError))
             self.assertEqual(None, result)
             results.append(result)
 

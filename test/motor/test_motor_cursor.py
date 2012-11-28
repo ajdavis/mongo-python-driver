@@ -55,7 +55,7 @@ class MotorCursorTest(MotorTest):
         cx = self.motor_connection(host, port)
         coll = cx.pymongo_test.test_collection
         cursor = coll.find()
-        self.assert_(isinstance(cursor, motor.MotorCursor))
+        self.assertTrue(isinstance(cursor, motor.MotorCursor))
         self.assertFalse(cursor.started, "Cursor shouldn't start immediately")
 
     @async_test_engine()
