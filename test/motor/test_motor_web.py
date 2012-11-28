@@ -44,7 +44,7 @@ class GridFSHandlerTestBase(AsyncHTTPTestCase):
         super(GridFSHandlerTestBase, self).setUp()
 
         # safe=True avoids race conditions
-        self.sync_db = pymongo.Connection(host, port, safe=True).test
+        self.sync_db = pymongo.Connection(host, port, safe=True).pymongo_test
         self.fs = gridfs.GridFS(self.sync_db)
 
         # Make a 500k file in GridFS with filename 'foo'
@@ -60,7 +60,7 @@ class GridFSHandlerTestBase(AsyncHTTPTestCase):
 
     def motor_db(self):
         return motor.MotorConnection(
-            host, port, io_loop=self.io_loop).open_sync().test
+            host, port, io_loop=self.io_loop).open_sync().pymongo_test
 
     def tearDown(self):
         self.fs.delete(self.file_id)

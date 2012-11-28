@@ -88,7 +88,7 @@ class MotorConnectionTest(MotorTest):
         # Make sure sync connection works
         self.assertEqual(
             {'_id': 5, 's': hex(5)},
-            sync_cx.test.test_collection.find_one({'_id': 5}))
+            sync_cx.pymongo_test.test_collection.find_one({'_id': 5}))
 
         done()
 
@@ -110,10 +110,10 @@ class MotorConnectionTest(MotorTest):
         result = yield motor.Op(cx.admin.command, "buildinfo")
         self.assertEqual(int, type(result['bits']))
 
-        yield motor.Op(cx.test.test_collection.insert,
+        yield motor.Op(cx.pymongo_test.test_collection.insert,
             {'_id': 'test_open_sync'})
         doc = yield motor.Op(
-            cx.test.test_collection.find_one, {'_id': 'test_open_sync'})
+            cx.pymongo_test.test_collection.find_one, {'_id': 'test_open_sync'})
         self.assertEqual('test_open_sync', doc['_id'])
         done()
 
@@ -134,11 +134,11 @@ class MotorConnectionTest(MotorTest):
             # Custom loop works?
             yield AssertEqual(
                 {'_id': 17, 's': hex(17)},
-                cx.test.test_collection.find_one, {'_id': 17})
+                cx.pymongo_test.test_collection.find_one, {'_id': 17})
 
             yield AssertEqual(
                 {'_id': 37, 's': hex(37)},
-                cx.test.test_collection.find_one, {'_id': 37})
+                cx.pymongo_test.test_collection.find_one, {'_id': 37})
             done()
 
         test(self)
@@ -158,7 +158,7 @@ class MotorConnectionTest(MotorTest):
             yield AssertEqual(cx, cx.open)
             self.assertTrue(cx.connected)
             doc = yield motor.Op(
-                cx.test.test_collection.find_one, {'_id': 17})
+                cx.pymongo_test.test_collection.find_one, {'_id': 17})
             self.assertEqual({'_id': 17, 's': hex(17)}, doc)
             done()
 
@@ -196,7 +196,7 @@ class MotorConnectionTest(MotorTest):
             db_names = self.sync_cx.database_names()
             for test_db_name in test_db_names:
                 self.assertTrue(test_db_name in db_names)
-                result = self.sync_cx[test_db_name].test.find_one()
+                result = self.sync_cx[test_db_name].test_collection.find_one()
                 self.assertTrue(result, "No results in %s" % test_db_name)
                 self.assertEqual("bar", result.get("foo"),
                     "Wrong result from %s: %s" % (test_db_name, result))
@@ -223,7 +223,7 @@ class MotorConnectionTest(MotorTest):
         drop_all()
 
         # 2. Copy a test DB N times at once
-        yield motor.Op(cx.pymongo_test.test.insert, {"foo": "bar"})
+        yield motor.Op(cx.pymongo_test.test_collection.insert, {"foo": "bar"})
         for test_db_name in test_db_names:
             cx.copy_database("pymongo_test", test_db_name,
                 callback=(yield gen.Callback(key=test_db_name)))
@@ -266,10 +266,10 @@ class MotorConnectionTest(MotorTest):
         timeout = self.motor_connection(host, port, socketTimeoutMS=100)
         query = {'$where': delay(0.5), '_id': 1}
 
-        timeout.test.test_collection.find_one(
+        timeout.pymongo_test.test_collection.find_one(
             query, callback=(yield gen.Callback('timeout')))
 
-        no_timeout.test.test_collection.find_one(
+        no_timeout.pymongo_test.test_collection.find_one(
             query, callback=(yield gen.Callback('no_timeout')))
 
         timeout_result, no_timeout_result = yield gen.WaitAll(
@@ -345,7 +345,7 @@ class MotorConnectionTest(MotorTest):
         self.sync_db.insert_collection.drop()
         self.assertEqual(200, self.sync_coll.count())
         cx = self.motor_connection(host, port).open_sync()
-        collection = cx.test.test_collection
+        collection = cx.pymongo_test.test_collection
 
         concurrency = 100
         ndocs = [0]
@@ -366,7 +366,8 @@ class MotorConnectionTest(MotorTest):
         @gen.engine
         def insert(callback):
             for i in range(100):
-                yield motor.Op(cx.test.insert_collection.insert, {'foo': 'bar'})
+                yield motor.Op(
+                    cx.pymongo_test.insert_collection.insert, {'foo': 'bar'})
             callback()
 
         for i in range(concurrency):

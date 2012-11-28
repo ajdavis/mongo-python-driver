@@ -50,8 +50,10 @@ class MotorIPv6Test(MotorTest):
             else:
                 yield motor.Op(cx.open)
 
-            yield motor.Op(cx.test.test.insert, {"dummy": "object"})
-            result = yield motor.Op(cx.test.test.find_one, {"dummy": "object"})
+            yield motor.Op(
+                cx.pymongo_test.pymongo_test.insert, {"dummy": "object"})
+            result = yield motor.Op(
+                cx.pymongo_test.pymongo_test.find_one, {"dummy": "object"})
             self.assertEqual('object', result['dummy'])
 
         done()

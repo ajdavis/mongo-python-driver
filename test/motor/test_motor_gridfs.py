@@ -54,7 +54,7 @@ class MotorGridfsTest(MotorTest):
     def test_gridfs(self, done):
         self.assertRaises(TypeError, motor.MotorGridFS, "foo")
         self.assertRaises(TypeError, motor.MotorGridFS, 5)
-        db = self.motor_connection(host, port).open_sync().test
+        db = self.motor_connection(host, port).open_sync().pymongo_test
         fs = yield motor.Op(motor.MotorGridFS(db).open)
 
         # new_file should be an already-open MotorGridIn.
@@ -75,7 +75,7 @@ class MotorGridfsTest(MotorTest):
 
     @async_test_engine()
     def test_gridfs_callback(self, done):
-        db = self.motor_connection(host, port).open_sync().test
+        db = self.motor_connection(host, port).open_sync().pymongo_test
         fs = motor.MotorGridFS(db)
         self.check_callback_handling(fs.open, False)
 
@@ -98,7 +98,7 @@ class MotorGridfsTest(MotorTest):
             cx = motor.MotorConnection(host, port, io_loop=loop)
             yield motor.Op(cx.open)
 
-            fs = motor.MotorGridFS(cx.test)
+            fs = motor.MotorGridFS(cx.pymongo_test)
             self.assertFalse(fs.delegate)
 
             # Make sure we can do async things with the custom loop
@@ -111,7 +111,7 @@ class MotorGridfsTest(MotorTest):
             yield motor.Op(gridin1.close)
             file_id1 = gridin1._id
 
-            gridin2 = motor.MotorGridIn(cx.test.fs, filename='fn')
+            gridin2 = motor.MotorGridIn(cx.pymongo_test.fs, filename='fn')
             yield motor.Op(gridin2.open)
             yield motor.Op(gridin2.write, 'baz')
             yield motor.Op(gridin2.close)
@@ -119,7 +119,7 @@ class MotorGridfsTest(MotorTest):
             gridout0 = yield motor.Op(fs.get, file_id0)
             yield AssertEqual('foo', gridout0.read)
 
-            gridout1 = motor.MotorGridOut(cx.test.fs, file_id1)
+            gridout1 = motor.MotorGridOut(cx.pymongo_test.fs, file_id1)
             yield motor.Op(gridout1.open)
             yield AssertEqual('bar', gridout1.read)
 
@@ -131,7 +131,7 @@ class MotorGridfsTest(MotorTest):
 
     @async_test_engine()
     def test_basic(self, done):
-        db = self.motor_connection(host, port).open_sync().test
+        db = self.motor_connection(host, port).open_sync().pymongo_test
         fs = yield motor.Op(motor.MotorGridFS(db).open)
         oid = yield motor.Op(fs.put, b("hello world"))
         out = yield motor.Op(fs.get, oid)
@@ -152,7 +152,7 @@ class MotorGridfsTest(MotorTest):
 
     @async_test_engine()
     def test_list(self, done):
-        db = self.motor_connection(host, port).open_sync().test
+        db = self.motor_connection(host, port).open_sync().pymongo_test
         fs = yield motor.Op(motor.MotorGridFS(db).open)
         self.assertEqual([], (yield motor.Op(fs.list)))
         yield motor.Op(fs.put, b("hello world"))
@@ -168,7 +168,7 @@ class MotorGridfsTest(MotorTest):
 
     @async_test_engine()
     def test_alt_collection(self, done):
-        db = self.motor_connection(host, port).open_sync().test
+        db = self.motor_connection(host, port).open_sync().pymongo_test
         alt = yield motor.Op(motor.MotorGridFS(db, 'alt').open)
         oid = yield motor.Op(alt.put, b("hello world"))
         gridout = yield motor.Op(alt.get, oid)
@@ -197,7 +197,7 @@ class MotorGridfsTest(MotorTest):
 
     @async_test_engine()
     def test_put_filelike(self, done):
-        db = self.motor_connection(host, port).open_sync().test
+        db = self.motor_connection(host, port).open_sync().pymongo_test
         fs = yield motor.Op(motor.MotorGridFS(db).open)
         oid = yield motor.Op(fs.put, StringIO(b("hello world")), chunk_size=1)
         self.assertEqual(11, (yield motor.Op(db.fs.chunks.count)))
@@ -207,7 +207,7 @@ class MotorGridfsTest(MotorTest):
 
     @async_test_engine()
     def test_put_duplicate(self, done):
-        db = self.motor_connection(host, port).open_sync().test
+        db = self.motor_connection(host, port).open_sync().pymongo_test
         fs = yield motor.Op(motor.MotorGridFS(db).open)
         oid = yield motor.Op(fs.put, b("hello"))
         yield AssertRaises(FileExists, fs.put, "world", _id=oid)

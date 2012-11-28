@@ -41,8 +41,6 @@ except ImportError:
 
 
 # TODO: replicate asyncmongo's whole test suite?
-# TODO: don't use the 'test' database, use something that will play nice w/
-#     Jenkins environment
 # TODO: check that sockets are returned to pool, or closed, or something
 # TODO: test unsafe remove
 # TODO: error if a generator function isn't wrapped in async_test_engine -
@@ -196,7 +194,7 @@ class MotorTest(unittest.TestCase):
                 socketTimeoutMS=socketTimeoutMS,
                 ssl=False)
 
-        self.sync_db = self.sync_cx.test
+        self.sync_db = self.sync_cx.pymongo_test
         self.sync_coll = self.sync_db.test_collection
         self.sync_coll.drop()
 
@@ -278,7 +276,7 @@ class MotorTestBasic(MotorTest):
         # TODO: replace w/ assertTrue
         cx = self.motor_connection(host, port)
         self.assert_(repr(cx).startswith('MotorConnection'))
-        db = cx.test
+        db = cx.pymongo_test
         self.assert_(repr(db).startswith('MotorDatabase'))
-        coll = db.test
+        coll = db.test_collection
         self.assert_(repr(coll).startswith('MotorCollection'))

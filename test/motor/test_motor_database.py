@@ -36,7 +36,7 @@ class MotorDatabaseTest(MotorTest):
         # Test that we can create a db directly, not just from MotorConnection's
         # accessors
         cx = self.motor_connection(host, port)
-        db = motor.MotorDatabase(cx, 'test')
+        db = motor.MotorDatabase(cx, 'pymongo_test')
 
         # Make sure we got the right DB and it can do an operation
         doc = yield motor.Op(db.test_collection.find_one, {'_id': 1})
@@ -44,12 +44,12 @@ class MotorDatabaseTest(MotorTest):
         done()
 
     def test_collection_named_delegate(self):
-        db = self.motor_connection(host, port).test
+        db = self.motor_connection(host, port).pymongo_test
         self.assertTrue(isinstance(db.delegate, pymongo.database.Database))
         self.assertTrue(isinstance(db['delegate'], motor.MotorCollection))
 
     def test_database_callbacks(self):
-        db = self.motor_connection(host, port).test
+        db = self.motor_connection(host, port).pymongo_test
         self.check_optional_callback(db.drop_collection, "collection")
         self.check_optional_callback(db.create_collection, "collection")
         self.check_required_callback(db.validate_collection, "collection")
@@ -72,7 +72,7 @@ class MotorDatabaseTest(MotorTest):
         # that it works here, and we don't just rely on synchrotest
         # to cover it.
         cx = self.motor_connection(host, port)
-        db = cx.test
+        db = cx.pymongo_test
 
         # We test a special hack where add_son_manipulator corrects our mistake
         # if we pass a MotorDatabase, instead of Database, to AutoReference.

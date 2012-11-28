@@ -86,7 +86,7 @@ class MotorTailTest(MotorTest):
             self.each, results, len(self.tail_pauses),
             (yield gen.Callback('done')))
 
-        test_db = self.motor_connection(host, port).test
+        test_db = self.motor_connection(host, port).pymongo_test
         capped = test_db.capped
 
         # Note we do *not* pass tailable or await_data to find(), the
@@ -112,7 +112,7 @@ class MotorTailTest(MotorTest):
             self.each, results, len(self.drop_collection_pauses),
             (yield gen.Callback('done')))
 
-        test_db = self.motor_connection(host, port).test
+        test_db = self.motor_connection(host, port).pymongo_test
         capped = test_db.capped
         capped.find().tail(each)
         yield gen.Wait('done')
@@ -127,7 +127,7 @@ class MotorTailTest(MotorTest):
 
     @async_test_engine()
     def test_tail_uncapped_collection(self, done):
-        test_db = self.motor_connection(host, port).test
+        test_db = self.motor_connection(host, port).pymongo_test
         uncapped = test_db.uncapped
 
         yield AssertRaises(
@@ -147,7 +147,7 @@ class MotorTailTest(MotorTest):
         each = functools.partial(
             self.each, results, len(pauses) + 2, (yield gen.Callback('done')))
 
-        test_db = self.motor_connection(host, port).test
+        test_db = self.motor_connection(host, port).pymongo_test
         capped = test_db.capped
         capped.find().tail(each)
         yield gen.Wait('done')
@@ -166,7 +166,7 @@ class MotorTailTest(MotorTest):
         loop = ioloop.IOLoop.instance()
         results = []
 
-        test_db = self.motor_connection(host, port).test
+        test_db = self.motor_connection(host, port).pymongo_test
         capped = test_db.capped
         cursor = capped.find(tailable=True, await_data=True)
         while len(results) < len(pauses):

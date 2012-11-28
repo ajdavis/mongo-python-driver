@@ -91,10 +91,10 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
         result = yield motor.Op(cx.admin.command, "buildinfo")
         self.assertEqual(int, type(result['bits']))
 
-        yield motor.Op(cx.test.test_collection.insert,
+        yield motor.Op(cx.pymongo_test.test_collection.insert,
             {'_id': 'test_open_sync'})
         doc = yield motor.Op(
-            cx.test.test_collection.find_one, {'_id': 'test_open_sync'})
+            cx.pymongo_test.test_collection.find_one, {'_id': 'test_open_sync'})
         self.assertEqual('test_open_sync', doc['_id'])
         done()
 
@@ -120,11 +120,11 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
             # Custom loop works?
             yield AssertEqual(
                 {'_id': 17, 's': hex(17)},
-                cx.test.test_collection.find_one, {'_id': 17})
+                cx.pymongo_test.test_collection.find_one, {'_id': 17})
 
             yield AssertEqual(
                 {'_id': 37, 's': hex(37)},
-                cx.test.test_collection.find_one, {'_id': 37})
+                cx.pymongo_test.test_collection.find_one, {'_id': 37})
 
             done()
 
@@ -153,7 +153,7 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
                 cx.delegate._ReplicaSetConnection__monitor.io_loop)
 
             doc = yield motor.Op(
-                cx.test.test_collection.find_one, {'_id': 17})
+                cx.pymongo_test.test_collection.find_one, {'_id': 17})
             self.assertEqual({'_id': 17, 's': hex(17)}, doc)
             done()
 
@@ -188,7 +188,7 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
         # Make sure sync connection works
         self.assertEqual(
             {'_id': 5, 's': hex(5)},
-            sync_cx.test.test_collection.find_one({'_id': 5}))
+            sync_cx.pymongo_test.test_collection.find_one({'_id': 5}))
 
         done()
 
@@ -204,7 +204,7 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
         iostream.IOStream.write = lambda self, data, callback: self.close()
 
         try:
-            cursor = db.test.find(
+            cursor = db.pymongo_test.find(
                 read_preference=pymongo.ReadPreference.SECONDARY)
 
             yield AssertRaises(pymongo.errors.AutoReconnect, cursor.each)
