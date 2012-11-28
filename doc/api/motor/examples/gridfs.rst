@@ -8,7 +8,6 @@ Writing a file to GridFS with :meth:`~motor.MotorGridFS.put`
 
 .. code-block:: python
 
-    import tornado.web, tornado.ioloop
     from tornado import gen
     import motor
 
@@ -35,7 +34,6 @@ Streaming a file to GridFS with :class:`~motor.MotorGridIn`
 
 .. code-block:: python
 
-    import tornado.web, tornado.ioloop
     from tornado import gen
     import motor
 
@@ -75,7 +73,6 @@ Setting attributes on a :class:`~motor.MotorGridIn`
 
 .. code-block:: python
 
-    import tornado.web, tornado.ioloop
     from tornado import gen
     import motor
 
@@ -105,7 +102,6 @@ Reading from GridFS with :class:`~motor.MotorGridOut`
 
 .. code-block:: python
 
-    import tornado.web, tornado.ioloop
     from tornado import gen
     import motor
 
