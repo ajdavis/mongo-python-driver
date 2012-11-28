@@ -423,7 +423,7 @@ class MotorCursorTest(MotorTest):
 
         def f():
             # Last ref, should trigger __del__ immediately in CPython and
-            # allow eventual __del__ in PyPY.
+            # allow eventual __del__ in PyPy.
             del cursor[0]
 
         greenlet.greenlet(f).switch()
