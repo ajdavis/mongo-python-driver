@@ -14,6 +14,7 @@
 
 """Test Motor, an asynchronous driver for MongoDB and Tornado."""
 
+import datetime
 import os
 import time
 import unittest
@@ -34,30 +35,21 @@ from pymongo.errors import InvalidOperation, ConfigurationError
 
 
 class MotorCursorTest(MotorTest):
-    def wait_for_cursors(self):
+    @gen.engine
+    def wait_for_cursors(self, callback):
+        """Ensure any cursors opened during the test have been closed on the
+        server. `yield motor.Op(cursor.close)` is usually simpler.
         """
-        Useful if you need to ensure some operation completes, e.g. each() or
-        cursor.close(), before asserting there are no open cursors.
+        timeout_sec = float(os.environ.get('TIMEOUT_SEC', 5))
+        loop = ioloop.IOLoop.instance()
+        start = time.time()
+        while self.get_open_cursors() > self.open_cursors:
+            if time.time() - start > timeout_sec:
+                self.fail("Waited too long for cursors to close")
 
-        `yield motor.Op(cursor.close)` is usually simpler.
-        """
-        if self.get_open_cursors() > self.open_cursors:
-            loop = ioloop.IOLoop.instance()
+            yield gen.Task(loop.add_timeout, datetime.timedelta(seconds=0.1))
 
-            def timeout_err():
-                loop.stop()
-
-            timeout_sec = float(os.environ.get('TIMEOUT_SEC', 5))
-            timeout = loop.add_timeout(time.time() + timeout_sec, timeout_err)
-
-            def check():
-                if self.get_open_cursors() <= self.open_cursors:
-                    loop.remove_timeout(timeout)
-                    loop.stop()
-
-            period_ms = 500
-            ioloop.PeriodicCallback(check, period_ms).start()
-            loop.start()
+        callback()
 
     def test_cursor(self):
         cx = self.motor_connection(host, port)
@@ -105,7 +97,7 @@ class MotorCursorTest(MotorTest):
         yield cursor.fetch_next
         del cursor
         yield gen.Task(ioloop.IOLoop.instance().add_callback)
-        self.wait_for_cursors()
+        yield gen.Task(self.wait_for_cursors)
         done()
 
     @async_test_engine()
@@ -431,7 +423,7 @@ class MotorCursorTest(MotorTest):
         self.assertEqual(1 + self.open_cursors, self.get_open_cursors())
 
         del cursor
-        self.wait_for_cursors()
+        yield gen.Task(self.wait_for_cursors)
         done()
 
     @async_test_engine()
@@ -453,7 +445,7 @@ class MotorCursorTest(MotorTest):
             del cursor[0]
 
         greenlet.greenlet(f).switch()
-        self.wait_for_cursors()
+        yield gen.Task(self.wait_for_cursors)
         done()
 
 
