@@ -31,22 +31,13 @@ if not motor.requirements_satisfied:
 
 from tornado import gen, ioloop
 
+from test.test_connection import host, port
 
 have_ssl = True
 try:
     import ssl
 except ImportError:
     have_ssl = False
-
-
-host = os.environ.get("DB_IP", "localhost")
-port = int(os.environ.get("DB_PORT", 27017))
-
-host2 = os.environ.get("DB_IP2", "localhost")
-port2 = int(os.environ.get("DB_PORT2", 27018))
-
-host3 = os.environ.get("DB_IP3", "localhost")
-port3 = int(os.environ.get("DB_PORT3", 27019))
 
 
 # TODO: replicate asyncmongo's whole test suite?

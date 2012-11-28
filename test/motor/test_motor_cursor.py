@@ -25,8 +25,8 @@ if not motor.requirements_satisfied:
 import greenlet
 from tornado import ioloop, gen
 
-from test.motor import (
-    MotorTest, async_test_engine, host, port, AssertEqual)
+from test.test_connection import host, port
+from test.motor import MotorTest, async_test_engine, AssertEqual
 import pymongo
 from pymongo.errors import InvalidOperation, ConfigurationError
 

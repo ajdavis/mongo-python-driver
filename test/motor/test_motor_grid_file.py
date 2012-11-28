@@ -28,7 +28,8 @@ from bson.objectid import ObjectId
 from bson.py3compat import b
 from gridfs.errors import NoFile
 
-from test.motor import MotorTest, async_test_engine, host, port, AssertRaises
+from test.test_connection import host, port
+from test.motor import MotorTest, async_test_engine, AssertRaises
 
 
 class MotorGridFileTest(MotorTest):

@@ -25,10 +25,11 @@ if not motor.requirements_satisfied:
 
 from tornado import ioloop, gen
 
-from test.motor import (
-    MotorTest, async_test_engine, host, port, AssertRaises)
+from test.test_connection import host, port
+from test.motor import MotorTest, async_test_engine, AssertRaises
 from pymongo.errors import OperationFailure
 
+# TODO: test tailing empty collection
 
 class MotorTailTest(MotorTest):
     def setUp(self):

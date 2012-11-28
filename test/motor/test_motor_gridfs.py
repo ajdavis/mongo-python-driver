@@ -30,9 +30,9 @@ from gridfs.errors import FileExists, NoFile
 from pymongo.errors import AutoReconnect
 from pymongo.read_preferences import ReadPreference
 
+from test.test_connection import host, port
 from test.test_replica_set_connection import TestConnectionReplicaSetBase
-from test.motor import (
-    MotorTest, async_test_engine, host, port, AssertEqual, AssertRaises)
+from test.motor import MotorTest, async_test_engine, AssertEqual, AssertRaises
 
 
 class MotorGridfsTest(MotorTest):

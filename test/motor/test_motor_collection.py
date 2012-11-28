@@ -25,8 +25,8 @@ if not motor.requirements_satisfied:
 
 from tornado import gen, ioloop
 
-from test.motor import (
-    MotorTest, async_test_engine, host, port, AssertEqual, AssertRaises)
+from test.test_connection import host, port
+from test.motor import MotorTest, async_test_engine, AssertEqual, AssertRaises
 import bson
 from bson.objectid import ObjectId
 from pymongo.errors import DuplicateKeyError

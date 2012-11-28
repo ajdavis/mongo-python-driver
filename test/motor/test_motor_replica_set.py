@@ -25,8 +25,8 @@ if not motor.requirements_satisfied:
 
 from tornado import ioloop, iostream
 
-from test.motor import (
-    MotorTest, async_test_engine, AssertEqual, AssertRaises, host, port )
+from test.test_connection import host, port
+from test.motor import MotorTest, async_test_engine, AssertEqual, AssertRaises
 import pymongo.errors
 import pymongo.replica_set_connection
 from test.test_replica_set_connection import TestConnectionReplicaSetBase

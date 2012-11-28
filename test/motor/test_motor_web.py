@@ -34,7 +34,7 @@ import motor.web
 from tornado.testing import AsyncHTTPTestCase
 from tornado.web import Application
 
-from test.motor import host, port
+from test.test_connection import host, port
 
 
 # We're using Tornado's AsyncHTTPTestCase instead of our own MotorTestCase for

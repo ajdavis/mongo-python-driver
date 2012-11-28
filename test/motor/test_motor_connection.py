@@ -28,8 +28,8 @@ from tornado import ioloop, gen
 
 import pymongo
 
-from test.motor import (
-    MotorTest, async_test_engine, host, port, AssertRaises, AssertEqual )
+from test.test_connection import host, port
+from test.motor import MotorTest, async_test_engine, AssertRaises, AssertEqual
 from pymongo.errors import (
     InvalidOperation, ConfigurationError, ConnectionFailure, AutoReconnect)
 from test.utils import server_is_master_with_slave, delay
