@@ -248,17 +248,6 @@ class MotorTest(unittest.TestCase):
 
     def tearDown(self):
         actual_open_cursors = self.get_open_cursors()
-
-        if actual_open_cursors != self.open_cursors:
-            # Run the loop for a little bit: An unfortunately convoluted means
-            # of letting all cursors close themselves before we finish the test,
-            # so tearDown() doesn't complain about cursors left open.
-            loop = ioloop.IOLoop.instance()
-            loop.add_timeout(time.time() + 0.25, loop.stop)
-            loop.start()
-
-            actual_open_cursors = self.get_open_cursors()
-
         self.assertEqual(
             self.open_cursors,
             actual_open_cursors,
