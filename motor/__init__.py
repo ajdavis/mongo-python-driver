@@ -1500,7 +1500,6 @@ class MotorCursor(MotorBase):
                 self.close()
 
 
-# TODO: doc not really a file-like object
 class MotorGridOut(MotorOpenable):
     """Class to read data out of GridFS.
 
@@ -1511,7 +1510,6 @@ class MotorGridOut(MotorOpenable):
     __delegate_class__ = gridfs.GridOut
 
     __getattr__     = ReadOnlyDelegateProperty()
-    # TODO: doc that we can't set these props as in PyMongo
     _id             = ReadOnlyDelegateProperty()
     filename        = ReadOnlyDelegateProperty()
     name            = ReadOnlyDelegateProperty()
@@ -1526,7 +1524,6 @@ class MotorGridOut(MotorOpenable):
     seek            = ReadOnlyDelegateProperty()
     read            = AsyncRead()
     readline        = AsyncRead()
-    # TODO: doc that we don't support __iter__, close(), or context-mgr protocol
 
     def __init__(
         self, root_collection, file_id=None, file_document=None,
@@ -1597,7 +1594,6 @@ class MotorGridOut(MotorOpenable):
                 callback(None, e)
 
 
-# TODO: doc no context-mgr protocol, __setattr__
 class MotorGridIn(MotorOpenable):
     __delegate_class__ = gridfs.GridIn
 
@@ -1608,14 +1604,12 @@ class MotorGridIn(MotorOpenable):
     writelines      = AsyncCommand().unwrap(MotorGridOut)
     _id             = ReadOnlyDelegateProperty()
     md5             = ReadOnlyDelegateProperty()
-    # TODO: doc that we can't set these props as in PyMongo
     filename        = ReadOnlyDelegateProperty()
     name            = ReadOnlyDelegateProperty()
     content_type    = ReadOnlyDelegateProperty()
     length          = ReadOnlyDelegateProperty()
     chunk_size      = ReadOnlyDelegateProperty()
     upload_date     = ReadOnlyDelegateProperty()
-    # TODO: doc
     set             = AsyncCommand(name='__setattr__')
 
     def __init__(self, root_collection, **kwargs):

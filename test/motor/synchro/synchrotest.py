@@ -48,7 +48,6 @@ excluded_modules = [
     'test.test_master_slave_connection',
 ]
 
-# TODO: document these variations and omissions b/w PyMongo and the Motor API
 excluded_tests = [
     # Synchro can't simulate requests, so test copy_db in Motor directly.
     'TestConnection.test_copy_db',

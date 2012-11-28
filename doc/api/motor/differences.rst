@@ -267,6 +267,76 @@ a single-threaded Tornado application. See Tornado's documentation on
 Minor differences
 =================
 
+Tailable cursors
+----------------
+
+Motor provides a convenience method :meth:`~motor.MotorCursor.tail` that
+hides some complexity involved in tailing a cursor on a capped collection.
+
+.. seealso:: `Tailable cursors <http://www.mongodb.org/display/DOCS/Tailable+Cursors>`_
+
+GridFS
+------
+
+- File-like
+
+    PyMongo's :class:`~gridfs.grid_file.GridIn` and
+    :class:`~gridfs.grid_file.GridOut` strive to act like Python's built-in
+    file objects, so they can be passed to many functions that expect files.
+    But the I/O methods of :class:`~motor.MotorGridIn` and
+    :class:`~motor.MotorGridOut` require callbacks, so they cannot obey the
+    file API and aren't suitable in the same circumstances as files.
+
+- Iteration
+
+    It's convenient in PyMongo to iterate a :class:`~gridfs.grid_file.GridOut`::
+
+        fs = gridfs.GridFS(db)
+        grid_out = fs.get(file_id)
+        for chunk in grid_out:
+            print chunk
+
+    :class:`~motor.MotorGridOut` cannot support this API asynchronously.
+    To read a ``MotorGridOut`` use the non-blocking
+    :meth:`~motor.MotorGridOut.read` method. For convenience ``MotorGridOut``
+    provides :meth:`~motor.MotorGridOut.stream_to_handler`.
+
+    .. seealso:: :ref:`reading-from-gridfs` and :ref:`GridFSHandler <gridfs-handler>`.
+
+- Setting properties
+
+    In PyMongo, you can set arbitrary attributes on
+    a :class:`~gridfs.grid_file.GridIn` and they're stored as metadata on
+    the server, even after the ``GridIn`` is closed::
+
+        grid_in = fs.new_file()
+        grid_in.close()
+        grid_in.my_field = 'my_value'
+
+    Updating metadata on a :class:`~motor.MotorGridIn` requires a callback, so
+    the API is different::
+
+        @gen.engine
+        def f():
+            fs = motor.MotorGridFS(db)
+            yield motor.Op(fs.open)
+            grid_in = yield motor.Op(fs.new_file)
+            yield motor.Op(grid_in.close)
+            yield motor.Op(grid_in.set, 'my_field', 'my_value')
+
+    .. seealso:: :ref:`setting-attributes-on-a-motor-gridin`
+
+- The "with" statement
+
+    :class:`~gridfs.grid_file.GridIn` is a context manager--you can use it in a
+    "with" statement and it is closed on exit::
+
+        with fs.new_file() as grid_in:
+            grid_in.write('data')
+
+    But ``MotorGridIn``'s :meth:`~motor.MotorGridIn.close` takes a callback, so
+    it must be called explicitly.
+
 is_locked
 ---------
 

@@ -68,6 +68,38 @@ Streaming a file to GridFS with :class:`~motor.MotorGridIn`
         yield motor.Op(gridin.write, file)
         yield motor.Op(gridin.close)
 
+.. _setting-attributes-on-a-motor-gridin:
+
+Setting attributes on a :class:`~motor.MotorGridIn`
+---------------------------------------------------
+
+.. code-block:: python
+
+    import tornado.web, tornado.ioloop
+    from tornado import gen
+    import motor
+
+    db = motor.MotorConnection().open_sync().test
+
+    @gen.engine
+    def set_attributes():
+        fs = yield motor.Op(motor.MotorGridFS(db).open)
+        gridin = yield motor.Op(fs.new_file)
+
+        # Set metadata attributes
+        yield motor.Op(gridin.set, 'content_type', 'image/png')
+        yield motor.Op(gridin.close)
+
+        # Attributes set after closing are sent to the server immediately
+        yield motor.Op(gridin.set, 'my_field', 'my_value')
+
+        gridout = yield motor.Op(fs.get, gridin._id)
+        assert 'image/png' == gridin.content_type
+        assert 'image/png' == gridin.contentType # synonymous
+        assert 'my_value' == gridin.my_field
+
+.. _reading-from-gridfs:
+
 Reading from GridFS with :class:`~motor.MotorGridOut`
 -----------------------------------------------------
 
