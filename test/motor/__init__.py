@@ -220,31 +220,6 @@ class MotorTest(unittest.TestCase):
         """
         return motor.MotorConnection(host, port, *args, **kwargs).open_sync()
 
-    def wait_for_cursors(self):
-        """
-        Useful if you need to ensure some operation completes, e.g. each() or
-        cursor.close(), before asserting there are no open cursors.
-
-        Don't use from @async_test_engine! Do `yield motor.Op(cursor.close)`.
-        """
-        if self.get_open_cursors() > self.open_cursors:
-            loop = ioloop.IOLoop.instance()
-
-            def timeout_err():
-                loop.stop()
-
-            timeout_sec = float(os.environ.get('TIMEOUT_SEC', 5))
-            timeout = loop.add_timeout(time.time() + timeout_sec, timeout_err)
-
-            def check():
-                if self.get_open_cursors() <= self.open_cursors:
-                    loop.remove_timeout(timeout)
-                    loop.stop()
-
-            period_ms = 500
-            ioloop.PeriodicCallback(check, period_ms).start()
-            loop.start()
-
     def check_callback_handling(self, fn, required):
         """
         Take a function and verify that it accepts a 'callback' parameter
@@ -301,6 +276,7 @@ class MotorTest(unittest.TestCase):
 
 class MotorTestBasic(MotorTest):
     def test_repr(self):
+        # TODO: replace w/ assertTrue
         cx = self.motor_connection(host, port)
         self.assert_(repr(cx).startswith('MotorConnection'))
         db = cx.test

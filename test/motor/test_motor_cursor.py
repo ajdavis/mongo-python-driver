@@ -14,6 +14,8 @@
 
 """Test Motor, an asynchronous driver for MongoDB and Tornado."""
 
+import os
+import time
 import unittest
 from functools import partial
 
@@ -32,6 +34,31 @@ from pymongo.errors import InvalidOperation, ConfigurationError
 
 
 class MotorCursorTest(MotorTest):
+    def wait_for_cursors(self):
+        """
+        Useful if you need to ensure some operation completes, e.g. each() or
+        cursor.close(), before asserting there are no open cursors.
+
+        `yield motor.Op(cursor.close)` is usually simpler.
+        """
+        if self.get_open_cursors() > self.open_cursors:
+            loop = ioloop.IOLoop.instance()
+
+            def timeout_err():
+                loop.stop()
+
+            timeout_sec = float(os.environ.get('TIMEOUT_SEC', 5))
+            timeout = loop.add_timeout(time.time() + timeout_sec, timeout_err)
+
+            def check():
+                if self.get_open_cursors() <= self.open_cursors:
+                    loop.remove_timeout(timeout)
+                    loop.stop()
+
+            period_ms = 500
+            ioloop.PeriodicCallback(check, period_ms).start()
+            loop.start()
+
     def test_cursor(self):
         cx = self.motor_connection(host, port)
         coll = cx.test.foo
@@ -198,7 +225,6 @@ class MotorCursorTest(MotorTest):
         yield AssertEqual(None, coll.find()[5:5].each)
         yield AssertEqual([], coll.find()[:0].to_list)
         yield AssertEqual([], coll.find()[5:5].to_list)
-        self.wait_for_cursors()
         done()
 
     def test_cursor_close(self):

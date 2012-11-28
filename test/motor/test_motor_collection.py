@@ -177,9 +177,6 @@ class MotorCollectionTest(MotorTest):
         self.check_required_callback(cursor.each)
         self.check_required_callback(cursor.to_list)
 
-        # Ensure tearDown doesn't complain about open cursors
-        self.wait_for_cursors()
-
     @async_test_engine()
     def test_find_is_async(self, done):
         # Confirm find() is async by launching two operations which will finish
