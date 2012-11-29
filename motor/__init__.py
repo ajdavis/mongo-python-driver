@@ -1434,34 +1434,84 @@ class MotorCursor(MotorBase):
         Raises :class:`~pymongo.errors.InvalidOperation` if this
         cursor has already been used.
 
-        To get a single document use an integral index, e.g.::
+        To get a single document use an integral index, e.g.:
 
-          >>> def callback(result, error):
-          ...     print result
+        .. testsetup:: getitem
+
+          import sys
+          from pymongo.connection import Connection
+          Connection().test.test_collection.remove(safe=True)
+          from motor import MotorConnection
+          from tornado.ioloop import IOLoop
+          from tornado import gen
+          collection = MotorConnection().open_sync().test.test_collection
+          import motor
+
+        .. doctest:: getitem
+
+          >>> @gen.engine
+          ... def f():
+          ...     yield motor.Op(collection.insert,
+          ...         [{'i': i} for i in range(10)])
           ...
-          >>> db.test.find()[50].each(callback)
+          ...     cursor = collection.find().sort([('i', 1)])[5]
+          ...     yield cursor.fetch_next
+          ...     doc = cursor.next_object()
+          ...     print doc['i']
+          ...     IOLoop.instance().stop()
+          ...
+          >>> f()
+          >>> IOLoop.instance().start()
+          5
 
-        An :class:`~pymongo.errors.IndexError` will be raised if
-        the index is negative or greater than the amount of documents in
-        this cursor. Any limit previously applied to this cursor will be
-        ignored.
+        Any limit previously applied to this cursor will be ignored.
 
-        To get a slice of documents use a slice index, e.g.::
+        The cursor returns ``None`` if the index is greater than or equal to
+        the length of the result set.
 
-          >>> db.test.find()[20:25].each(callback)
+        .. doctest:: getitem
+
+          >>> @gen.engine
+          ... def f():
+          ...     cursor = collection.find().sort([('i', 1)])[1000]
+          ...     yield cursor.fetch_next
+          ...     print cursor.next_object()
+          ...     IOLoop.instance().stop()
+          ...
+          >>> f()
+          >>> IOLoop.instance().start()
+          None
+
+        To get a slice of documents use a slice index like
+        ``cursor[start:end]``.
+
+        .. doctest:: getitem
+
+          >>> @gen.engine
+          ... def f():
+          ...     cursor = collection.find().sort([('i', 1)])[2:6]
+          ...     while (yield cursor.fetch_next):
+          ...         doc = cursor.next_object()
+          ...         sys.stdout.write(str(doc['i']) + ', ')
+          ...     print 'done'
+          ...     IOLoop.instance().stop()
+          ...
+          >>> f()
+          >>> IOLoop.instance().start()
+          2, 3, 4, 5, done
 
         This will return a copy of this cursor with a limit of ``5`` and
         skip of ``20`` applied.  Using a slice index will override any prior
         limits or skips applied to this cursor (including those
-        applied through previous calls to this method). Raises
-        :class:`~pymongo.errors.IndexError` when the slice has a step,
+        applied through previous calls to this method).
+
+        Raises :class:`~pymongo.errors.IndexError` when the slice has a step,
         a negative start value, or a stop value less than or equal to
         the start value.
 
         :Parameters:
           - `index`: An integer or slice index to be applied to this cursor
         """
-        # TODO: doctest
         if self.started:
             raise pymongo.errors.InvalidOperation("MotorCursor already started")
 
