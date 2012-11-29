@@ -204,7 +204,11 @@ keyword argument, like::
 
   db.test_collection.insert(document, callback=some_function)
 
-Passing the function using the ``callback=`` syntax is required.
+.. warning:: Passing the callback function using the ``callback=`` syntax is
+  required. (This requirement is a side-effect of the technique Motor uses to
+  wrap PyMongo.) If you pass the callback as a positional argument instead,
+  you may see an exception like ``TypeError: method takes exactly 1 argument (2
+  given)``, or ``TypeError: callable is required``, or some silent misbehavior.
 
 :meth:`insert` is *asynchronous*. This means it returns immediately, and the
 actual work of inserting the document into the collection is performed in the

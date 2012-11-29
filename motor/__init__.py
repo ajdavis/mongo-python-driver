@@ -61,10 +61,6 @@ __all__ = [
 #   unless versionchanged >= 2.3 or so -- whenever Motor joins PyMongo
 # TODO: review open_sync(), does it need to disconnect after success to ensure
 #   all IOStreams with old IOLoop are gone?
-# TODO: doc everywhere that 'callback=my_callback' must be done kwargs-style,
-#   including in a FAQ, and update check_callable
-#   Common symptom: "TypeError: close() takes exactly 1 argument (2 given)"
-#   ... or: 'callable is required'
 # TODO: what do safe=True and other get_last_error options mean when creating
 #   a MotorConnection or MotorReplicaSetConnection?
 # TODO: ensure all documented methods return MotorGridOut, not GridOut,
