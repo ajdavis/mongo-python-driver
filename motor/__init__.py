@@ -1463,7 +1463,6 @@ class MotorCursor(MotorBase):
         """
         # TODO test that this raises IndexError if index < 0
         # TODO: doctest
-        # TODO: test this is an error if tailable
         if self.started:
             raise pymongo.errors.InvalidOperation("MotorCursor already started")
 
