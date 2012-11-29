@@ -928,7 +928,6 @@ class MotorDatabase(MotorBase):
     # test creating capped coll
     create_collection   = AsyncCommand().wrap(Collection)
     drop_collection     = AsyncCommand().unwrap('MotorCollection')
-    # TODO: test
     validate_collection = AsyncRead().unwrap('MotorCollection')
     # TODO: test that this raises an error if collection exists in Motor, and
     # test creating capped coll

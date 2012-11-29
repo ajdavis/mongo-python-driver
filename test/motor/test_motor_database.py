@@ -24,9 +24,10 @@ if not motor.requirements_satisfied:
 from tornado import gen
 
 from test.test_connection import host, port
-from test.motor import MotorTest, async_test_engine
+from test.motor import MotorTest, async_test_engine, AssertRaises
 
 import pymongo.database
+from pymongo.errors import OperationFailure
 from pymongo.son_manipulator import AutoReference, NamespaceInjector
 
 
@@ -128,6 +129,24 @@ class MotorDatabaseTest(MotorTest):
         users = yield motor.Op(db.system.users.find().to_list)
         self.assertFalse("mike" in [u['user'] for u in users])
         done()
+
+    @async_test_engine()
+    def test_validate_collection(self, done):
+        cx = self.motor_connection(host, port)
+        db = cx.pymongo_test
+
+        yield AssertRaises(TypeError, db.validate_collection, 5)
+        yield AssertRaises(TypeError, db.validate_collection, None)
+        yield AssertRaises(OperationFailure, db.validate_collection,
+                          "test.doesnotexist")
+        yield AssertRaises(OperationFailure, db.validate_collection,
+                          db.test.doesnotexist)
+
+        yield motor.Op(db.test.save, {"dummy": u"object"})
+        self.assertTrue((yield motor.Op(db.validate_collection, "test")))
+        self.assertTrue((yield motor.Op(db.validate_collection, db.test)))
+        done()
+
 
 if __name__ == '__main__':
     unittest.main()
