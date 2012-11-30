@@ -1381,7 +1381,6 @@ class MotorCursor(MotorBase):
         return MotorCursor(self.delegate.clone(), self.collection)
 
     def rewind(self):
-        # TODO: test, doc -- this seems a little extra weird w/ Motor
         self.delegate.rewind()
         self.started = False
         return self

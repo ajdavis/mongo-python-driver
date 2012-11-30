@@ -467,6 +467,39 @@ class MotorCursorTest(MotorTest):
         done()
 
     @async_test_engine()
+    def test_rewind(self, done):
+        cx = self.motor_connection(host, port)
+        cursor = cx.pymongo_test.test_collection.find().limit(2)
+
+        count = 0
+        while (yield cursor.fetch_next):
+            cursor.next_object()
+            count += 1
+        self.assertEqual(2, count)
+
+        cursor.rewind()
+        count = 0
+        while (yield cursor.fetch_next):
+            cursor.next_object()
+            count += 1
+        self.assertEqual(2, count)
+
+        cursor.rewind()
+        count = 0
+        while (yield cursor.fetch_next):
+            cursor.next_object()
+            break
+
+        cursor.rewind()
+        while (yield cursor.fetch_next):
+            cursor.next_object()
+            count += 1
+
+        self.assertEqual(2, count)
+        self.assertEqual(cursor, cursor.rewind())
+        done()
+
+    @async_test_engine()
     def test_del_on_main_greenlet(self, done):
         # Since __del__ can happen on any greenlet, MotorCursor must be
         # prepared to close itself correctly on main or a child.
