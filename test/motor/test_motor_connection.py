@@ -260,6 +260,16 @@ class MotorConnectionTest(MotorTest):
         done()
 
     @async_test_engine()
+    def test_is_locked(self, done):
+        cx = self.motor_connection(host, port)
+        self.assertTrue((yield motor.Op(cx.is_locked)) is False)
+        yield motor.Op(cx.fsync, lock=True)
+        self.assertTrue((yield motor.Op(cx.is_locked)) is True)
+        yield motor.Op(cx.unlock)
+        self.assertTrue((yield motor.Op(cx.is_locked)) is False)
+        done()
+
+    @async_test_engine()
     def test_timeout(self, done):
         # Launch two slow find_ones. The one with a timeout should get an error
         no_timeout = self.motor_connection(host, port)

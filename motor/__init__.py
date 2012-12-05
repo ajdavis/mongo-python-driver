@@ -748,11 +748,21 @@ class MotorConnection(MotorConnectionBase):
         """
         super(MotorConnection, self).__init__(*args, **kwargs)
 
-    # TODO: test directly, document what 'result' means to the callback
     def is_locked(self, callback):
-        """Is this server locked? While locked, all write operations
-        are blocked, although read operations may still be allowed.
-        Use :meth:`unlock` to unlock.
+        """Passes ``True`` to the callback if this server is locked, otherwise
+        ``False``. While locked, all write operations are blocked, although
+        read operations may still be allowed.
+        Use :meth:`fsync` to lock, :meth:`unlock` to unlock::
+
+            @gen.engine
+            def lock_unlock():
+                c = yield motor.Op(motor.MotorConnection().open)
+                locked = yield motor.Op(c.is_locked)
+                assert locked is False
+                yield motor.Op(c.fsync, lock=True)
+                assert (yield motor.Op(c.is_locked)) is True
+                yield motor.Op(c.unlock)
+                assert (yield motor.Op(c.is_locked)) is False
 
         :Parameters:
          - `callback`:    function taking parameters (result, error)
@@ -766,7 +776,7 @@ class MotorConnection(MotorConnectionBase):
             if error:
                 callback(None, error)
             else:
-                callback(result.get('fsyncLock', 0), None)
+                callback(bool(result.get('fsyncLock')), None)
 
         self.admin.current_op(callback=is_locked)
 
