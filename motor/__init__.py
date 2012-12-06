@@ -1191,7 +1191,7 @@ class MotorCursor(MotorBase):
         """Get a document from the most recently fetched batch, or ``None``.
         See :attr:`fetch_next`.
         """
-        # TODO: comment on empty
+        # __empty is a special case: limit of 0
         if self.delegate._Cursor__empty or not self.buffer_size:
             return None
         return self.delegate.next()
