@@ -934,13 +934,9 @@ class MotorDatabase(MotorBase):
     command             = AsyncCommand()
     authenticate        = AsyncCommand()
     eval                = AsyncCommand()
-    # TODO: test that this raises an error if collection exists in Motor, and
-    # test creating capped coll
     create_collection   = AsyncCommand().wrap(Collection)
     drop_collection     = AsyncCommand().unwrap('MotorCollection')
     validate_collection = AsyncRead().unwrap('MotorCollection')
-    # TODO: test that this raises an error if collection exists in Motor, and
-    # test creating capped coll
     collection_names    = AsyncRead()
     current_op          = AsyncRead()
     profiling_level     = AsyncRead()

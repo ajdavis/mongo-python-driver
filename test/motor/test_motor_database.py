@@ -27,7 +27,7 @@ from test.test_connection import host, port
 from test.motor import MotorTest, async_test_engine, AssertRaises
 
 import pymongo.database
-from pymongo.errors import OperationFailure
+from pymongo.errors import OperationFailure, CollectionInvalid
 from pymongo.son_manipulator import AutoReference, NamespaceInjector
 
 
@@ -60,6 +60,30 @@ class MotorDatabaseTest(MotorTest):
         cx = self.motor_connection(host, port)
         result = yield motor.Op(cx.admin.command, "buildinfo")
         self.assertEqual(int, type(result['bits']))
+        done()
+
+    @async_test_engine()
+    def test_create_collection(self, done):
+        # Test creating collection, return val is wrapped in MotorCollection,
+        # creating it again raises CollectionInvalid.
+        db = self.motor_connection(host, port).pymongo_test
+        collection = yield motor.Op(db.create_collection, 'test_collection2')
+        self.assertTrue(isinstance(collection, motor.MotorCollection))
+        self.assertTrue(
+            'test_collection2' in (yield motor.Op(db.collection_names)))
+        yield AssertRaises(
+            CollectionInvalid, db.create_collection, 'test_collection2')
+        yield motor.Op(db.drop_collection, 'test_collection2')
+
+        # Test creating capped collection
+        collection = yield motor.Op(
+            db.create_collection, 'test_capped', capped=True, size=1000)
+        self.assertTrue(isinstance(collection, motor.MotorCollection))
+        self.assertEqual(
+            {"capped": True, 'size': 1000},
+            (yield motor.Op(db.test_capped.options)))
+        yield motor.Op(db.drop_collection, 'test_capped')
+
         done()
 
     def test_command_callback(self):
