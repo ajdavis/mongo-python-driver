@@ -55,7 +55,6 @@ __all__ = [
 # TODO: ensure we're doing
 #   timeouts as efficiently as possible, test performance hit with timeouts
 #   from registering and cancelling timeouts
-# TODO: document, smugly, that Motor has configurable IOLoops
 # TODO: test cross-host copydb
 # TODO: perhaps remove versionchanged Sphinx annotations from proxied methods,
 #   unless versionchanged >= 2.3 or so -- whenever Motor joins PyMongo
@@ -673,8 +672,6 @@ class MotorConnectionBase(MotorOpenable, MotorBase):
                 self.delegate.pool_class = functools.partial(
                     MotorPool, self.io_loop)
 
-                # TODO: would delegate.disconnect() be good enough? OTOH would
-                #   that break RSC monitoring?
                 for pool in self._get_pools():
                     pool.io_loop = self.io_loop
                     pool.reset()
