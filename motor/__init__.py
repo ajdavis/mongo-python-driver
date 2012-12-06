@@ -1204,7 +1204,7 @@ class MotorCursor(MotorBase):
         is complete.
 
         Cancel iteration early by returning ``False`` from the callback. (Only
-        ``False``, not ``None`` or 0, cancels iteration.)
+        ``False`` cancels iteration: returning ``None`` or 0 does not.)
 
         .. testsetup:: each
 
