@@ -75,21 +75,21 @@ But Motor's :meth:`~motor.MotorCollection.find_one` method works asynchronously:
 
 The callback must be passed as a keyword argument, not a positional argument.
 
-To find multiple documents, Motor provides :meth:`~motor.MotorCursor.each` and
-:meth:`~motor.MotorCursor.to_list`.
+To find multiple documents, Motor
+provides :meth:`~motor.MotorCursor.to_list`:
 
 .. code-block:: python
 
-    def each_user(user, error):
+    def got_users(users, error):
         if error:
-            print 'error getting user!', error
-        elif user:
-            print user
+            print 'error getting users!', error
         else:
-            # Iteration complete
-            print 'Done'
+            for user in users:
+                print user
 
-    db.users.find().each(callback=each_user)
+    db.users.find().to_list(callback=got_users)
+
+.. seealso:: MotorCursor's :meth:`~motor.MotorCursor.fetch_next`
 
 .. _motor-acknowledged-writes:
 
