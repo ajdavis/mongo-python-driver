@@ -20,11 +20,16 @@ from distutils.version import LooseVersion
 from docutils.nodes import (
     field, list_item, paragraph, title_reference, field_list, field_body,
     bullet_list, Text, field_name)
-from sphinx.addnodes import desc, desc_content, versionmodified
+from sphinx.addnodes import desc, desc_content, versionmodified, desc_signature
 from sphinx.util.inspect import getargspec, safe_getattr
 from sphinx.ext.autodoc import MethodDocumenter, AttributeDocumenter
 
 import motor
+
+
+# TODO: HACK! This is a place to store info while parsing, to be used before
+#   generating
+motor_info = {}
 
 
 class MotorAttribute(object):
@@ -34,6 +39,15 @@ class MotorAttribute(object):
         self.name = name
         self.delegate_property = delegate_property
         self.pymongo_attr = getattr(motor_class.__delegate_class__, name)
+        if self.is_async_method():
+            full_name = '%s.%s.%s' % (
+                self.motor_class.__module__, self.motor_class.__name__,
+                self.name)
+
+            motor_info[full_name] = {
+                'is_async_method': self.is_async_method(),
+                'requires_callback': self.requires_callback(),
+            }
 
     def is_async_method(self):
         return isinstance(self.delegate_property, motor.Async)
@@ -144,7 +158,7 @@ def get_parameter_names(parameters_node):
     return parameter_names
 
 
-def insert_callback(parameters_node):
+def insert_callback(parameters_node, callback_required):
     # We need to know what params are here already
     parameter_names = get_parameter_names(parameters_node)
 
@@ -159,14 +173,17 @@ def insert_callback(parameters_node):
         else:
             kwargs_pos = len(parameter_names)
 
-        # TODO: is the callback optional? If so insert "(optional)"
+        doc = (": function taking (result, error), to execute when operation"
+            " completes")
+
+        if not callback_required:
+            doc = " (optional)" + doc
+
         new_item = list_item(
             '', paragraph(
                 '', '',
                 title_reference('', 'callback'),
-                Text(": function taking (result, error), to execute"
-                     " when operation completes")
-            ))
+                Text(doc)))
 
         # Insert "callback" before *args and **kwargs
         parameters_node.insert(min(args_pos, kwargs_pos), new_item)
@@ -174,7 +191,15 @@ def insert_callback(parameters_node):
 
 def process_motor_nodes(app, doctree):
     for objnode in doctree.traverse(desc):
-        if app.env.currmodule == 'motor' and objnode['desctype'] == 'method':
+        if objnode['objtype'] == 'method':
+            name = find_by_path(objnode, [desc_signature])[0]['names'][0]
+            method_motor_info = motor_info.get(name)
+            if not (
+                method_motor_info and method_motor_info.get('is_async_method')
+            ):
+                # Not a special Motor method
+                continue
+
             desc_content_node = find_by_path(objnode, [desc_content])[0]
 
             try:
@@ -192,7 +217,8 @@ def process_motor_nodes(app, doctree):
 
                 desc_content_node.append(parameters_field_list_node)
 
-            insert_callback(parameters_node)
+            insert_callback(
+                parameters_node, method_motor_info['requires_callback'])
 
             # Remove "versionadded", "versionchanged" and "deprecated"
             # directives, if they refer to PyMongo changes prior to Motor.
