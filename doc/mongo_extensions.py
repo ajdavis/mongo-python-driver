@@ -19,9 +19,7 @@ from docutils.writers import html4css1
 from sphinx import addnodes
 from sphinx.util.compat import (Directive,
                                 make_admonition)
-from sphinx.ext import autodoc
 
-from motor_extensions import MotorMethodDocumenter, MotorAttributeDocumenter
 
 class mongodoc(nodes.Admonition, nodes.Element):
     pass
@@ -103,6 +101,4 @@ def setup(app):
 
     app.add_directive("mongodoc", MongodocDirective)
 
-    app.add_autodocumenter(MotorMethodDocumenter)
-    app.add_autodocumenter(MotorAttributeDocumenter)
     app.connect("doctree-resolved", process_mongodoc_nodes)

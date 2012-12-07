@@ -15,8 +15,12 @@
 """Motor specific extensions to Sphinx."""
 
 import inspect
-import re
+from distutils.version import LooseVersion
 
+from docutils.nodes import (
+    field, list_item, paragraph, title_reference, field_list, field_body,
+    bullet_list, Text)
+from sphinx.addnodes import desc, desc_content, versionmodified
 from sphinx.util.inspect import getargspec, safe_getattr
 from sphinx.ext.autodoc import MethodDocumenter, AttributeDocumenter
 
@@ -39,62 +43,7 @@ class MotorAttribute(object):
 
     @property
     def __doc__(self):
-        doc = self.pymongo_attr.__doc__ or ''
-        if not self.is_async_method():
-            return doc
-
-        # Find or create parameter list like:
-        # :Parameters:
-        #  - `x`: A parameter
-        #  - `**kwargs`: Additional keyword arguments
-        #
-        # ... and insert the `callback` parameter's documentation at the end of
-        # the list, above **kwargs. If no kwargs, just put `callback` at the end
-
-        indent = ' ' * 10
-        if self.requires_callback():
-            optional = ''
-        else:
-            optional = ' (optional)'
-
-        callback_doc = ('- `callback`%s: function taking (result, error), '
-            'to execute when operation completes\n\n') % optional
-
-        params_pat = re.compile(r'''
-            \n\s*:Parameters:\s*\n # parameters header
-            .*?                    # params, one per line
-            \n\s*                  # blank line
-            (?=(\n\s*\.\.\s)|$)    # end of string, '.. note', '.. seealso', etc
-        ''', re.VERBOSE | re.DOTALL)
-        match = params_pat.search(doc)
-        if match:
-            # Find a line like ' - `x`: A parameter'
-            # We'll use that line to determine the indentation depth at which
-            # to insert ' - `callback`'
-            params_doc = doc[match.start():match.end()]
-            param_match = re.search('^([ \t]*)-\s*`\S+`.*?:.*$', params_doc, re.M)
-            if param_match:
-                indent = param_match.groups()[0]
-
-            # See if the final line is '**kwargs':
-            lines = params_doc.split('\n')
-            for kwargs_lineno, line in enumerate(lines):
-                if '**kwargs' in line:
-                    params_doc = '\n'.join(lines[:kwargs_lineno])
-                    kwargs_lines = '\n' + '\n'.join(lines[kwargs_lineno:])
-                    break
-            else:
-                kwargs_lines = ''
-
-            doc = (
-                doc[:match.start()] + params_doc.rstrip()
-                + '\n' + indent + callback_doc + kwargs_lines + doc[match.end():]
-            )
-        else:
-            # No existing parameters documentation for this method, make one
-            doc += '\n' + ' ' * 8 + ':Parameters:\n' + indent + callback_doc
-
-        return doc
+        return self.pymongo_attr.__doc__ or ''
 
     def getargspec(self):
         args, varargs, kwargs, defaults = getargspec(self.pymongo_attr)
@@ -171,3 +120,85 @@ class MotorAttributeDocumenter(AttributeDocumenter):
         # Rely on user to only use '.. automotorattribute::' on
         # DelegateProperties
         return True
+
+
+def find_by_path(root, classes):
+    if not classes:
+        return [root]
+
+    _class = classes[0]
+    rv = []
+    for child in root.children:
+        if isinstance(child, _class):
+            rv.extend(find_by_path(child, classes[1:]))
+
+    return rv
+
+
+def get_parameter_names(parameters_node):
+    parameter_names = []
+    for list_item_node in parameters_node:
+        title_ref_node = find_by_path(list_item_node,
+            [paragraph, title_reference])
+        if title_ref_node:
+            parameter_names.append(title_ref_node[0].astext())
+
+    return parameter_names
+
+
+def insert_callback(parameters_node):
+    # We need to know what params are here already
+    parameter_names = get_parameter_names(parameters_node)
+
+    if 'callback' not in parameter_names:
+        if '*args' in parameter_names:
+            args_pos = parameter_names.index('*args')
+        else:
+            args_pos = len(parameter_names)
+
+        if '**kwargs' in parameter_names:
+            kwargs_pos = parameter_names.index('**kwargs')
+        else:
+            kwargs_pos = len(parameter_names)
+
+        # TODO: is the callback optional? If so insert "(optional)"
+        new_item = list_item(
+            '', paragraph(
+                '', '',
+                title_reference('', 'callback'),
+                Text(": function taking (result, error), to execute"
+                     " when operation completes")
+            ))
+
+        # Insert "callback" before *args and **kwargs
+        parameters_node.insert(min(args_pos, kwargs_pos), new_item)
+
+
+def process_motor_nodes(app, doctree):
+    for objnode in doctree.traverse(desc):
+        if app.env.currmodule == 'motor' and objnode['desctype'] == 'method':
+            # Find the parameter list, a bullet_list instance
+            parameters_nodes = find_by_path(objnode,
+                [desc_content, field_list, field, field_body, bullet_list])
+
+            if parameters_nodes:
+                insert_callback(parameters_nodes[0])
+
+            # Remove "versionadded", "versionchanged" and "deprecated"
+            # directives, if they refer to PyMongo changes prior to Motor.
+            # All are of type "versionmodified".
+            version_nodes = find_by_path(objnode,
+                [desc_content, versionmodified])
+
+            for version_node in version_nodes:
+                version = LooseVersion(version_node['version'])
+                # TODO: set this to the first PyMongo release with Motor!
+                min_version = LooseVersion('2.6')
+                if version < min_version:
+                    version_node.parent.remove(version_node)
+
+
+def setup(app):
+    app.add_autodocumenter(MotorMethodDocumenter)
+    app.add_autodocumenter(MotorAttributeDocumenter)
+    app.connect("doctree-read", process_motor_nodes)
