@@ -19,7 +19,7 @@ from distutils.version import LooseVersion
 
 from docutils.nodes import (
     field, list_item, paragraph, title_reference, field_list, field_body,
-    bullet_list, Text)
+    bullet_list, Text, field_name)
 from sphinx.addnodes import desc, desc_content, versionmodified
 from sphinx.util.inspect import getargspec, safe_getattr
 from sphinx.ext.autodoc import MethodDocumenter, AttributeDocumenter
@@ -175,19 +175,29 @@ def insert_callback(parameters_node):
 def process_motor_nodes(app, doctree):
     for objnode in doctree.traverse(desc):
         if app.env.currmodule == 'motor' and objnode['desctype'] == 'method':
-            # Find the parameter list, a bullet_list instance
-            parameters_nodes = find_by_path(objnode,
-                [desc_content, field_list, field, field_body, bullet_list])
+            desc_content_node = find_by_path(objnode, [desc_content])[0]
 
-            if parameters_nodes:
-                insert_callback(parameters_nodes[0])
+            try:
+                # Find the parameter list, a bullet_list instance
+                parameters_node = find_by_path(desc_content_node,
+                    [field_list, field, field_body, bullet_list])[0]
+            except IndexError:
+                # PyMongo method has no parameters, create an empty params list
+                parameters_node = bullet_list()
+                parameters_field_list_node = field_list('',
+                    field('',
+                        field_name('', 'Parameters '),
+                        field_body('',
+                            parameters_node)))
+
+                desc_content_node.append(parameters_field_list_node)
+
+            insert_callback(parameters_node)
 
             # Remove "versionadded", "versionchanged" and "deprecated"
             # directives, if they refer to PyMongo changes prior to Motor.
             # All are of type "versionmodified".
-            version_nodes = find_by_path(objnode,
-                [desc_content, versionmodified])
-
+            version_nodes = find_by_path(desc_content_node, [versionmodified])
             for version_node in version_nodes:
                 version = LooseVersion(version_node['version'])
                 # TODO: set this to the first PyMongo release with Motor!
