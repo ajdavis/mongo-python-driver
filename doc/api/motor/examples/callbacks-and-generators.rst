@@ -1,6 +1,9 @@
 Examples With Callbacks And Generators
 ======================================
 
+Programming with Motor is far easier using Tornado's ``gen`` module than when
+using raw callbacks. Here's an example that shows the difference.
+
 With callbacks
 --------------
 
