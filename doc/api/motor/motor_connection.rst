@@ -51,9 +51,9 @@
   .. automotormethod:: drop_database
   .. automotormethod:: copy_database(from_name, to_name[, from_host=None[, username=None[, password=None[, callback=None]]]])
   .. automotormethod:: server_info
-  .. automotormethod:: start_request
-  .. automotormethod:: end_request
   .. automotormethod:: close_cursor
   .. automotormethod:: kill_cursors
   .. automotormethod:: fsync
   .. automotormethod:: unlock
+  .. automethod:: start_request
+  .. automethod:: end_request

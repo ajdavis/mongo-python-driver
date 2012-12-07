@@ -84,6 +84,7 @@ def get_pymongo_attr(obj, name, *defargs):
 
 class MotorMethodDocumenter(MethodDocumenter):
     objtype = 'motormethod'
+    directivetype = 'method'
 
     @staticmethod
     def get_attr(obj, name, *defargs):
@@ -91,14 +92,13 @@ class MotorMethodDocumenter(MethodDocumenter):
 
     @classmethod
     def can_document_member(cls, member, membername, isattr, parent):
-        # Rely on user to only use '.. automotormethod::' on DelegateProperties
-        return True
+        return isinstance(member, motor.Async)
 
     def format_args(self):
-        if isinstance(self.object, MotorAttribute):
-            return self.object.format_args()
-        else:
-            return super(MotorMethodDocumenter, self).format_args()
+        assert isinstance(self.object, MotorAttribute), (
+            "%s is not a motor.Async, just use 'automethod', not"
+            " 'automotormethod'" % self.object)
+        return self.object.format_args()
 
 
 class MotorAttributeDocumenter(AttributeDocumenter):
@@ -117,9 +117,7 @@ class MotorAttributeDocumenter(AttributeDocumenter):
 
     @classmethod
     def can_document_member(cls, member, membername, isattr, parent):
-        # Rely on user to only use '.. automotorattribute::' on
-        # DelegateProperties
-        return True
+        return isinstance(member, motor.DelegateProperty)
 
 
 def find_by_path(root, classes):

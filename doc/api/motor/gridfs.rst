@@ -9,7 +9,7 @@ Store blobs of data in `GridFS <http://www.mongodb.org/display/DOCS/GridFS>`_.
 
 .. autoclass:: MotorGridFS
 
-  .. automotormethod:: open
+  .. automethod:: open
   .. automotormethod:: new_file
   .. automotormethod:: get
   .. automotormethod:: get_version
@@ -31,7 +31,7 @@ Store blobs of data in `GridFS <http://www.mongodb.org/display/DOCS/GridFS>`_.
   .. automotorattribute:: upload_date
   .. automotorattribute:: md5
   .. automotorattribute:: closed
-  .. automotormethod:: open
+  .. automethod:: open
   .. automotormethod:: write
   .. automotormethod:: writelines
   .. method:: set(name, value, callback=None)
@@ -63,9 +63,9 @@ Store blobs of data in `GridFS <http://www.mongodb.org/display/DOCS/GridFS>`_.
   .. automotorattribute:: chunk_size
   .. automotorattribute:: upload_date
   .. automotorattribute:: md5
-  .. automotormethod:: open
+  .. automethod:: open
   .. automotormethod:: tell
   .. automotormethod:: seek
   .. automotormethod:: read
   .. automotormethod:: readline
-  .. automotormethod:: stream_to_handler
+  .. automethod:: stream_to_handler
