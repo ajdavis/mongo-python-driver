@@ -121,9 +121,7 @@ def motor_sock_method(method):
             #       its greenlet terminated
             # - IOLoop runs this function
             if not child_gr.dead:
-                # IOStream.error is a Tornado 2.3 feature
-                error = getattr(self.stream, 'error', None)
-                child_gr.throw(error or socket.error("error"))
+                child_gr.throw(socket.error("error"))
 
         self.stream.set_close_callback(closed)
 

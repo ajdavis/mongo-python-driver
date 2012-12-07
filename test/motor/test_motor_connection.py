@@ -302,14 +302,6 @@ class MotorConnectionTest(MotorTest):
             exc = e
 
         self.assertTrue(isinstance(exc, ConnectionFailure))
-
-        # Tornado 2.3 IOStream stores the error that closed it
-        if tornado.version_info >= (2, 3):
-            # Are these assumptions valid on Windows?
-            self.assertTrue('Connection refused' in str(exc))
-        else:
-            self.assertTrue('error' in str(exc))
-
         done()
 
     @async_test_engine()
