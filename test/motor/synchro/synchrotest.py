@@ -60,8 +60,11 @@ excluded_tests = [
     'TestConnection.test_contextlib_auto_start_request',
     'TestConnection.test_with_start_request',
     'TestConnection.test_operation_failure_with_request',
+    'TestConnection.test_nested_request',
+    'TestConnection.test_request_threads',
     'TestDatabase.test_authenticate_and_request',
     'TestGridfs.test_request',
+    'TestGridfsRequest.test_gridfs_request',
 
     # test_replica_set_connection: We test this directly, because it requires
     # monkey-patching either socket or IOStream, depending on whether it's

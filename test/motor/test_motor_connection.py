@@ -79,11 +79,11 @@ class MotorConnectionTest(MotorTest):
         self.assertTrue(isinstance(sync_cx, pymongo.connection.Connection))
         self.assertEqual(host, sync_cx.host)
         self.assertEqual(port, sync_cx.port)
-        self.assertEqual(1000, sync_cx._Connection__conn_timeout * 1000.0)
-        self.assertEqual(1500, sync_cx._Connection__net_timeout * 1000.0)
-        self.assertEqual(23, sync_cx._Connection__max_pool_size)
-        self.assertEqual(True, sync_cx._Connection__tz_aware)
-        self.assertEqual(DictSubclass, sync_cx._Connection__document_class)
+        self.assertEqual(1000, sync_cx._MongoClient__conn_timeout * 1000.0)
+        self.assertEqual(1500, sync_cx._MongoClient__net_timeout * 1000.0)
+        self.assertEqual(23, sync_cx._MongoClient__max_pool_size)
+        self.assertEqual(True, sync_cx._MongoClient__tz_aware)
+        self.assertEqual(DictSubclass, sync_cx._MongoClient__document_class)
 
         # Make sure sync connection works
         self.assertEqual(
@@ -315,7 +315,7 @@ class MotorConnectionTest(MotorTest):
         except Exception, e:
             exc = e
 
-        self.assertTrue(isinstance(exc, AutoReconnect))
+        self.assertTrue(isinstance(exc, ConnectionFailure))
         connection_duration = time.time() - start
         self.assertTrue(abs(connection_duration - 1) < 0.25, (
             'Expected connection to timeout after about 1 sec, timed out'

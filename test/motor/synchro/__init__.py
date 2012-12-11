@@ -48,7 +48,7 @@ GreenletPool = None
 GridFile = None
 
 from pymongo.pool import NO_REQUEST, NO_SOCKET_YET, SocketInfo, Pool, _closed
-from pymongo.replica_set_connection import _partition_node, Member, Monitor
+from pymongo.mongo_replica_set_client import _partition_node, Member, Monitor
 
 timeout_sec = float(os.environ.get('TIMEOUT_SEC', 10))
 
@@ -173,7 +173,13 @@ class SynchroMeta(type):
                         # Re-synchronize the method
                         sync_method = Sync(attrname, delegate_attr.has_safe_arg)
                         setattr(new_class, attrname, sync_method)
-                    elif isinstance(delegate_attr, motor.MotorCursorChainingMethod):
+                    elif isinstance(delegate_attr, motor.UnwrapAsync):
+                        # Re-synchronize the method
+                        sync_method = Sync(
+                            attrname, delegate_attr.prop.has_safe_arg)
+                        setattr(new_class, attrname, sync_method)
+                    elif isinstance(
+                        delegate_attr, motor.MotorCursorChainingMethod):
                         # Wrap MotorCursors in Synchro Cursors
                         wrapper = WrapOutgoing()
                         wrapper.name = attrname
@@ -203,6 +209,7 @@ class Synchro(object):
 
     _BaseObject__set_slave_okay = SynchroProperty()
     _BaseObject__set_safe       = SynchroProperty()
+    write_concern               = SynchroProperty()
 
     def synchronize(self, async_method, has_safe_arg=False):
         """
@@ -323,7 +330,8 @@ class Connection(Synchro):
 
     __getitem__ = __getattr__
 
-    _Connection__pool = SynchroProperty()
+    _MongoClient__pool        = SynchroProperty()
+    _MongoClient__net_timeout = SynchroProperty()
 
 
 class MasterSlaveConnection(object):
@@ -346,9 +354,10 @@ class ReplicaSetConnection(Connection):
 
         self.synchro_connect()
 
-    _ReplicaSetConnection__writer           = SynchroProperty()
-    _ReplicaSetConnection__members          = SynchroProperty()
-    _ReplicaSetConnection__schedule_refresh = SynchroProperty()
+    _MongoReplicaSetClient__writer           = SynchroProperty()
+    _MongoReplicaSetClient__members          = SynchroProperty()
+    _MongoReplicaSetClient__schedule_refresh = SynchroProperty()
+    _MongoReplicaSetClient__net_timeout      = SynchroProperty()
 
 
 class Database(Synchro):
@@ -407,6 +416,9 @@ class Cursor(Synchro):
 
     rewind                     = WrapOutgoing()
     clone                      = WrapOutgoing()
+    __clone                    = WrapOutgoing()
+    __copy__                   = WrapOutgoing()
+    __deepcopy__               = WrapOutgoing()
 
     def __init__(self, motor_cursor):
         self.delegate = motor_cursor
@@ -467,8 +479,9 @@ class Cursor(Synchro):
     _Cursor__connection_id     = SynchroProperty()
     _Cursor__read_preference   = SynchroProperty()
     _Cursor__tag_sets          = SynchroProperty()
+    _Cursor__fields            = SynchroProperty()
+    _Cursor__spec              = SynchroProperty()
     _Cursor__secondary_acceptable_latency_ms = SynchroProperty()
-
 
 class GridFS(Synchro):
     __delegate_class__ = motor.MotorGridFS

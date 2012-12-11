@@ -36,14 +36,15 @@ except ImportError:
 
 import pymongo
 import pymongo.common
-import pymongo.cursor
 import pymongo.errors
+import pymongo.mongo_replica_set_client
 import pymongo.pool
 import pymongo.son_manipulator
 import gridfs
 
 from pymongo.database import Database
 from pymongo.collection import Collection
+from pymongo.cursor import Cursor
 from gridfs import grid_file
 
 
@@ -342,6 +343,94 @@ class DelegateProperty(object):
     def get_name(self):
         return self.name
 
+    def wrap(self, original_class):
+        return Wrap(self, original_class)
+
+    def unwrap(self, motor_class):
+        return Unwrap(self, motor_class)
+
+
+class WrapBase(DelegateProperty):
+    def __init__(self, prop):
+        """Wraps a DelegateProperty for further processing"""
+        DelegateProperty.__init__(self, prop)
+        self.prop = prop
+
+    def set_name(self, name):
+        self.prop.set_name(name)
+
+    def get_name(self):
+        return self.prop.name
+
+
+class Wrap(WrapBase):
+    def __init__(self, prop, original_class):
+        """
+        TODO: UPDATE doc
+        A descriptor that wraps a Motor method and wraps its return value in a
+        Motor class. E.g., wrap Motor's map_reduce to return a MotorCollection
+        instead of a PyMongo Collection. Calls the wrap() method on the owner
+        object to do the actual wrapping at invocation time.
+        """
+        WrapBase.__init__(self, prop)
+        self.prop = prop
+        self.original_class = original_class
+
+    def __get__(self, obj, objtype):
+        f = self.prop.__get__(obj, objtype)
+        original_class = self.original_class
+
+        @functools.wraps(f)
+        def _f(*args, **kwargs):
+            result = f(*args, **kwargs)
+            # Don't call isinstance(), not checking subclasses
+            if result.__class__ is original_class:
+                # Delegate to the current object to wrap the result
+                return obj.wrap(result)
+            return result
+
+        return _f
+
+
+class Unwrap(WrapBase):
+    def __init__(self, prop, motor_class):
+        """
+        TODO: UPDATE doc
+        A descriptor that wraps a Motor method and unwraps its arguments. E.g.,
+        wrap Motor's drop_database and if a MotorDatabase is passed in, unwrap
+        it and pass in a pymongo.database.Database instead.
+        """
+        WrapBase.__init__(self, prop)
+        self.prop = prop
+        self.motor_class = motor_class
+
+    def __get__(self, obj, objtype):
+        f = self.prop.__get__(obj, objtype)
+        if isinstance(self.motor_class, basestring):
+            # Delayed reference - e.g., drop_database is defined before
+            # MotorDatabase is, so it was initialized with
+            # unwrap('MotorDatabase') instead of unwrap(MotorDatabase).
+            motor_class = globals()[self.motor_class]
+        else:
+            motor_class = self.motor_class
+
+        @functools.wraps(f)
+        def _f(*args, **kwargs):
+            def _unwrap_obj(obj):
+                # Don't call isinstance(), not checking subclasses
+                if obj.__class__ is motor_class:
+                    return obj.delegate
+                else:
+                    return obj
+
+            # Call _unwrap_obj on each arg and kwarg before invoking f
+            args = [_unwrap_obj(arg) for arg in args]
+            kwargs = dict([
+                (key, _unwrap_obj(value)) for key, value in kwargs.items()])
+            return f(*args, **kwargs)
+
+        return _f
+
 
 class Async(DelegateProperty):
     def __init__(self, has_safe_arg, cb_required, name=None):
@@ -365,50 +454,38 @@ class Async(DelegateProperty):
             sync_method,
             has_safe_arg=self.has_safe_arg,
             callback_required=self.cb_required)
-    
-    def wrap(self, original_class):
-        return Wrap(self, original_class)
-
-    def unwrap(self, motor_class):
-        return Unwrap(self, motor_class)
 
     def get_cb_required(self):
         return self.cb_required
 
+    def wrap(self, original_class):
+        return WrapAsync(self, original_class)
 
-class WrapBase(Async):
-    def __init__(self, async):
-        """Wraps an Async for further processing"""
-        Async.__init__(self, async.has_safe_arg, async.cb_required)
-        self.async = async
-
-    def set_name(self, name):
-        self.async.set_name(name)
-
-    def get_name(self):
-        return self.async.name
+    def unwrap(self, motor_class):
+        return UnwrapAsync(self, motor_class)
 
 
-class Wrap(WrapBase):
-    def __init__(self, async, original_class):
+class WrapAsync(Async):
+    def __init__(self, prop, original_class):
         """
+        TODO: UPDATE doc
         A descriptor that wraps a Motor method and wraps its return value in a
         Motor class. E.g., wrap Motor's map_reduce to return a MotorCollection
         instead of a PyMongo Collection. Calls the wrap() method on the owner
         object to do the actual wrapping at invocation time.
         """
-        WrapBase.__init__(self, async)
-        self.async = async
+        Async.__init__(self, prop.has_safe_arg, prop.cb_required)
+        self.prop = prop
         self.original_class = original_class
 
     def __get__(self, obj, objtype):
-        f = self.async.__get__(obj, objtype)
+        f = self.prop.__get__(obj, objtype)
         original_class = self.original_class
 
         @functools.wraps(f)
         def _f(*args, **kwargs):
             callback = kwargs.pop('callback', None)
-            check_callable(callback, self.async.cb_required)
+            check_callable(callback, self.prop.cb_required)
             if callback:
                 def _callback(result, error):
                     if error:
@@ -427,45 +504,13 @@ class Wrap(WrapBase):
             f(*args, **kwargs)
         return _f
 
+    def set_name(self, name):
+        self.prop.set_name(name)
 
-class Unwrap(WrapBase):
-    def __init__(self, async, motor_class):
-        """
-        A descriptor that wraps a Motor method and unwraps its arguments. E.g.,
-        wrap Motor's drop_database and if a MotorDatabase is passed in, unwrap
-        it and pass in a pymongo.database.Database instead.
-        """
-        WrapBase.__init__(self, async)
-        self.async = async
-        self.has_safe_arg = async.has_safe_arg
-        self.motor_class = motor_class
 
-    def __get__(self, obj, objtype):
-        f = self.async.__get__(obj, objtype)
-        if isinstance(self.motor_class, basestring):
-            # Delayed reference - e.g., drop_database is defined before
-            # MotorDatabase is, so it was initialized with
-            # unwrap('MotorDatabase') instead of unwrap(MotorDatabase).
-            motor_class = globals()[self.motor_class]
-        else:
-            motor_class = self.motor_class
-
-        @functools.wraps(f)
-        def _f(*args, **kwargs):
-            def _unwrap_obj(obj):
-                # Don't call isinstance(), not checking subclasses
-                if obj.__class__ is motor_class:
-                    return obj.delegate
-                else:
-                    return obj
-
-            # Call _unwrap_obj on each arg and kwarg before invoking f
-            args = [_unwrap_obj(arg) for arg in args]
-            kwargs = dict([
-                (key, _unwrap_obj(value)) for key, value in kwargs.items()])
-            f(*args, **kwargs)
-
-        return _f
+class UnwrapAsync(Unwrap):
+    def __init__(self, prop, motor_class):
+        Unwrap.__init__(self, prop, motor_class)
 
 
 class AsyncRead(Async):
@@ -777,7 +822,7 @@ class MotorConnection(MotorConnectionBase):
 
     def _get_pools(self):
         # TODO: expose the PyMongo pool, or otherwise avoid this
-        return [self.delegate._Connection__pool]
+        return [self.delegate._MongoClient__pool]
 
 
 class MotorReplicaSetConnection(MotorConnectionBase):
@@ -821,7 +866,7 @@ class MotorReplicaSetConnection(MotorConnectionBase):
 
         # We need to wait for open_sync() to complete and restore the
         # original IOLoop before starting the monitor. This is a hack.
-        self.delegate._ReplicaSetConnection__monitor.start_motor(self.io_loop)
+        self.delegate._MongoReplicaSetClient__monitor.start_motor(self.io_loop)
         return self
 
     def open(self, callback):
@@ -831,7 +876,7 @@ class MotorReplicaSetConnection(MotorConnectionBase):
                 callback(None, error)
             else:
                 try:
-                    monitor = self.delegate._ReplicaSetConnection__monitor
+                    monitor = self.delegate._MongoReplicaSetClient__monitor
                     monitor.start_motor(self.io_loop)
                 except Exception, e:
                     callback(None, e)
@@ -853,13 +898,13 @@ class MotorReplicaSetConnection(MotorConnectionBase):
         # TODO: expose the PyMongo RSC members, or otherwise avoid this
         return [
             member.pool for member in
-            self.delegate._ReplicaSetConnection__members.values()]
+            self.delegate._MongoReplicaSetClient__members.values()]
 
 
 # PyMongo uses a background thread to regularly inspect the replica set and
 # monitor it for changes. In Motor, use a periodic callback on the IOLoop to
 # monitor the set.
-class MotorReplicaSetMonitor(pymongo.replica_set_connection.Monitor):
+class MotorReplicaSetMonitor(pymongo.mongo_replica_set_client.Monitor):
     def __init__(self, rsc):
         assert isinstance(
             rsc, pymongo.replica_set_connection.ReplicaSetConnection), (
@@ -867,7 +912,7 @@ class MotorReplicaSetMonitor(pymongo.replica_set_connection.Monitor):
             " ReplicaSetConnection, not %s" % repr(rsc))
 
         # Fake the event_class: we won't use it
-        pymongo.replica_set_connection.Monitor.__init__(
+        pymongo.mongo_replica_set_client.Monitor.__init__(
             self, rsc, event_class=object)
 
         self.timeout_obj = None
@@ -1069,7 +1114,7 @@ class MotorCursorChainingMethod(DelegateProperty):
 
 
 class MotorCursor(MotorBase):
-    __delegate_class__ = pymongo.cursor.Cursor
+    __delegate_class__ = Cursor
     # TODO: test all these in test_motor_cursor.py
     count         = AsyncRead()
     distinct      = AsyncRead()
@@ -1078,6 +1123,8 @@ class MotorCursor(MotorBase):
     close         = AsyncCommand()
     cursor_id     = ReadOnlyDelegateProperty()
     alive         = ReadOnlyDelegateProperty()
+    __copy__      = ReadOnlyDelegateProperty().wrap(Cursor)
+    __deepcopy__  = ReadOnlyDelegateProperty().wrap(Cursor)
     batch_size    = MotorCursorChainingMethod()
     add_option    = MotorCursorChainingMethod()
     remove_option = MotorCursorChainingMethod()
@@ -1103,7 +1150,7 @@ class MotorCursor(MotorBase):
           automatically closed by the client when the :class:`MotorCursor` is
           cleaned up by the garbage collector.
         """
-        if not isinstance(cursor, pymongo.cursor.Cursor):
+        if not isinstance(cursor, Cursor):
             raise TypeError(
                 "cursor must be instance of pymongo.cursor.Cursor, not %s" % (
                 repr(cursor)))
@@ -1527,6 +1574,10 @@ class MotorCursor(MotorBase):
             # Get one document, force hard limit of 1 so server closes cursor
             # immediately
             return self[self.delegate._Cursor__skip+index:].limit(-1)
+
+    def wrap(self, cursor):
+        # Replace pymongo.cursor.Cursor with MotorCursor
+        return MotorCursor(cursor, self.collection)
 
     def __del__(self):
         # This MotorCursor is deleted on whatever greenlet does the last decref,

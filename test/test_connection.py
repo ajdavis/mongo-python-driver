@@ -534,7 +534,7 @@ with contextlib.closing(conn):
 self.assertEqual(0, len(conn._MongoClient__pool.sockets))
 """
         # Calling conn.close() has reset the pool
-        self.assertEqual(0, len(conn._Connection__pool.sockets))
+        self.assertEqual(0, len(conn._MongoClient__pool.sockets))
 
     def test_contextlib_auto_start_request(self):
         if sys.version_info < (2, 6):

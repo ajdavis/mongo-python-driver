@@ -698,6 +698,9 @@ class TestReplicaSetAuth(unittest.TestCase):
 
 
 class TestAlive(unittest.TestCase):
+    # Prevent Nose from automatically running this test
+    __test__ = False
+
     def setUp(self):
         members = [{}, {}]
         self.seed, self.name = ha_tools.start_replica_set(members)

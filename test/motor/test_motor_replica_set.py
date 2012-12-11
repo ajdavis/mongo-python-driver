@@ -57,10 +57,10 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
         result = yield motor.Op(cx.open)
         self.assertEqual(result, cx)
         self.assertTrue(cx.connected)
-        self.assertTrue(isinstance(cx.delegate._ReplicaSetConnection__monitor,
+        self.assertTrue(isinstance(cx.delegate._MongoReplicaSetClient__monitor,
             motor.MotorReplicaSetMonitor))
         self.assertEqual(ioloop.IOLoop.instance(),
-            cx.delegate._ReplicaSetConnection__monitor.io_loop)
+            cx.delegate._MongoReplicaSetClient__monitor.io_loop)
         done()
 
     def test_connection_callback(self):
@@ -82,10 +82,10 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
 
         # IOLoop was restored?
         self.assertEqual(loop, cx.io_loop)
-        self.assertTrue(isinstance(cx.delegate._ReplicaSetConnection__monitor,
+        self.assertTrue(isinstance(cx.delegate._MongoReplicaSetClient__monitor,
             motor.MotorReplicaSetMonitor))
         self.assertEqual(loop,
-            cx.delegate._ReplicaSetConnection__monitor.io_loop)
+            cx.delegate._MongoReplicaSetClient__monitor.io_loop)
 
         # Really connected?
         result = yield motor.Op(cx.admin.command, "buildinfo")
@@ -110,10 +110,10 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
 
         # Custom loop restored?
         self.assertEqual(loop, cx.io_loop)
-        self.assertTrue(isinstance(cx.delegate._ReplicaSetConnection__monitor,
+        self.assertTrue(isinstance(cx.delegate._MongoReplicaSetClient__monitor,
             motor.MotorReplicaSetMonitor))
         self.assertEqual(loop,
-            cx.delegate._ReplicaSetConnection__monitor.io_loop)
+            cx.delegate._MongoReplicaSetClient__monitor.io_loop)
 
         @async_test_engine(io_loop=loop)
         def test(self, done):
@@ -147,10 +147,10 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
             yield AssertEqual(cx, cx.open)
             self.assertTrue(cx.connected)
             self.assertTrue(isinstance(
-                cx.delegate._ReplicaSetConnection__monitor,
+                cx.delegate._MongoReplicaSetClient__monitor,
                 motor.MotorReplicaSetMonitor))
             self.assertEqual(loop,
-                cx.delegate._ReplicaSetConnection__monitor.io_loop)
+                cx.delegate._MongoReplicaSetClient__monitor.io_loop)
 
             doc = yield motor.Op(
                 cx.pymongo_test.test_collection.find_one, {'_id': 17})
@@ -174,16 +174,16 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
         sync_cx = cx.sync_connection()
         self.assertTrue(isinstance(
             sync_cx, pymongo.replica_set_connection.ReplicaSetConnection))
-        self.assertFalse(isinstance(sync_cx._ReplicaSetConnection__monitor,
+        self.assertFalse(isinstance(sync_cx._MongoReplicaSetClient__monitor,
             motor.MotorReplicaSetMonitor))
         self.assertEqual(1000,
-            sync_cx._ReplicaSetConnection__conn_timeout * 1000.0)
+            sync_cx._MongoReplicaSetClient__conn_timeout * 1000.0)
         self.assertEqual(1500,
-            sync_cx._ReplicaSetConnection__net_timeout * 1000.0)
+            sync_cx._MongoReplicaSetClient__net_timeout * 1000.0)
         self.assertEqual(23, sync_cx.max_pool_size)
-        self.assertEqual(True, sync_cx._ReplicaSetConnection__tz_aware)
+        self.assertEqual(True, sync_cx._MongoReplicaSetClient__tz_aware)
         self.assertEqual(DictSubclass,
-            sync_cx._ReplicaSetConnection__document_class)
+            sync_cx._MongoReplicaSetClient__document_class)
 
         # Make sure sync connection works
         self.assertEqual(
