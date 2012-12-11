@@ -32,14 +32,14 @@ Example usage (serialization)::
    ...        {'bar': {'hello': 'world'}},
    ...        {'code': Code("function x() { return 1; }")},
    ...        {'bin': Binary("\x00\x01\x02\x03\x04")}])
-   '[{"foo": [1, 2]}, {"bar": {"hello": "world"}}, {"code": {"$scope": {}, "$code": "function x() { return 1; }"}}, {"bin": {"$type": 0, "$binary": "AAECAwQ=\\n"}}]'
+   '[{"foo": [1, 2]}, {"bar": {"hello": "world"}}, {"code": {"$scope": {}, "$code": "function x() { return 1; }"}}, {"bin": {"$type": "00", "$binary": "AAECAwQ="}}]'
 
 Example usage (deserialization)::
 
 .. doctest::
 
    >>> from bson.json_util import loads
-   >>> loads('[{"foo": [1, 2]}, {"bar": {"hello": "world"}}, {"code": {"$scope": {}, "$code": "function x() { return 1; }"}}, {"bin": {"$type": 0, "$binary": "AAECAwQ=\\n"}}]')
+   >>> loads('[{"foo": [1, 2]}, {"bar": {"hello": "world"}}, {"code": {"$scope": {}, "$code": "function x() { return 1; }"}}, {"bin": {"$type": "00", "$binary": "AAECAwQ="}}]')
    [{u'foo': [1, 2]}, {u'bar': {u'hello': u'world'}}, {u'code': Code('function x() { return 1; }', {})}, {u'bin': Binary('\x00\x01\x02\x03\x04', 0)}]
 
 Alternatively, you can manually pass the `default` to :func:`json.dumps`.
@@ -83,7 +83,7 @@ except ImportError:
         json_lib = False
 
 import bson
-from bson import EPOCH_AWARE
+from bson import EPOCH_AWARE, RE_TYPE
 from bson.binary import Binary
 from bson.code import Code
 from bson.dbref import DBRef
@@ -93,9 +93,6 @@ from bson.objectid import ObjectId
 from bson.timestamp import Timestamp
 
 from bson.py3compat import PY3, binary_type, string_types
-
-# TODO share this with bson.py?
-_RE_TYPE = type(re.compile("foo"))
 
 
 def dumps(obj, *args, **kwargs):
@@ -154,7 +151,12 @@ def object_hook(dct):
     if "$maxKey" in dct:
         return MaxKey()
     if "$binary" in dct:
-        return Binary(base64.b64decode(dct["$binary"].encode()), dct["$type"])
+        if isinstance(dct["$type"], int):
+            dct["$type"] = "%02x" % dct["$type"]
+        subtype = int(dct["$type"], 16)
+        if subtype >= 0xffffff80:  # Handle mongoexport values
+            subtype = int(dct["$type"][6:], 16)
+        return Binary(base64.b64decode(dct["$binary"].encode()), subtype)
     if "$code" in dct:
         return Code(dct["$code"], dct.get("$scope"))
     if bson.has_uuid() and "$uuid" in dct:
@@ -166,7 +168,7 @@ def default(obj):
     if isinstance(obj, ObjectId):
         return {"$oid": str(obj)}
     if isinstance(obj, DBRef):
-        return obj.as_doc()
+        return _json_convert(obj.as_doc())
     if isinstance(obj, datetime.datetime):
         # TODO share this code w/ bson.py?
         if obj.utcoffset() is not None:
@@ -174,7 +176,7 @@ def default(obj):
         millis = int(calendar.timegm(obj.timetuple()) * 1000 +
                      obj.microsecond / 1000)
         return {"$date": millis}
-    if isinstance(obj, _RE_TYPE):
+    if isinstance(obj, RE_TYPE):
         flags = ""
         if obj.flags & re.IGNORECASE:
             flags += "i"
@@ -192,10 +194,10 @@ def default(obj):
         return {'$code': "%s" % obj, '$scope': obj.scope}
     if isinstance(obj, Binary):
         return {'$binary': base64.b64encode(obj).decode(),
-                '$type': obj.subtype}
+                '$type': "%02x" % obj.subtype}
     if PY3 and isinstance(obj, binary_type):
         return {'$binary': base64.b64encode(obj).decode(),
-                '$type': 0}
+                '$type': "00"}
     if bson.has_uuid() and isinstance(obj, bson.uuid.UUID):
         return {"$uuid": obj.hex}
     raise TypeError("%r is not JSON serializable" % obj)

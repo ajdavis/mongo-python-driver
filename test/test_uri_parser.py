@@ -16,6 +16,7 @@
 
 import copy
 import unittest
+import sys
 
 from pymongo.uri_parser import (_partition,
                                 _rpartition,
@@ -23,9 +24,7 @@ from pymongo.uri_parser import (_partition,
                                 split_hosts,
                                 split_options,
                                 parse_uri)
-from pymongo.errors import (ConfigurationError,
-                            InvalidURI,
-                            UnsupportedOption)
+from pymongo.errors import ConfigurationError, InvalidURI
 
 
 class TestURI(unittest.TestCase):
@@ -69,6 +68,16 @@ class TestURI(unittest.TestCase):
                          split_hosts('localhost,example.com'))
         self.assertEqual([('localhost', 27018), ('example.com', 27019)],
                          split_hosts('localhost:27018,example.com:27019'))
+        self.assertEqual([('/tmp/mongodb-27017.sock', None)],
+                         split_hosts('/tmp/mongodb-27017.sock'))
+        self.assertEqual([('/tmp/mongodb-27017.sock', None),
+                          ('example.com', 27017)],
+                        split_hosts('/tmp/mongodb-27017.sock,'
+                                    'example.com:27017'))
+        self.assertEqual([('example.com', 27017),
+                          ('/tmp/mongodb-27017.sock', None)],
+                        split_hosts('example.com:27017,'
+                                    '/tmp/mongodb-27017.sock'))
         self.assertRaises(ConfigurationError, split_hosts, '::1', 27017)
         self.assertRaises(ConfigurationError, split_hosts, '[::1:27017')
         self.assertRaises(ConfigurationError, split_hosts, '::1')
@@ -84,6 +93,16 @@ class TestURI(unittest.TestCase):
         self.assertRaises(ConfigurationError, split_options, 'socketTimeoutMS=0.0')
         self.assertRaises(ConfigurationError, split_options, 'connectTimeoutMS=foo')
         self.assertRaises(ConfigurationError, split_options, 'connectTimeoutMS=0.0')
+        self.assertRaises(ConfigurationError, split_options, 'connectTimeoutMS=1e100000')
+        self.assertRaises(ConfigurationError, split_options, 'connectTimeoutMS=-1e100000')
+
+        # On most platforms float('inf') and float('-inf') represent
+        # +/- infinity, although on Python 2.4 and 2.5 on Windows those
+        # expressions are invalid
+        if not (sys.platform == "win32" and sys.version_info <= (2, 5)):
+            self.assertRaises(ConfigurationError, split_options, 'connectTimeoutMS=inf')
+            self.assertRaises(ConfigurationError, split_options, 'connectTimeoutMS=-inf')
+
         self.assertTrue(split_options('socketTimeoutMS=300'))
         self.assertTrue(split_options('connectTimeoutMS=300'))
         self.assertEqual({'sockettimeoutms': 0.3}, split_options('socketTimeoutMS=300'))
@@ -179,11 +198,64 @@ class TestURI(unittest.TestCase):
                               ":8a2e:0370:7334]:27017/?slaveOk=true"))
 
         res = copy.deepcopy(orig)
-        res['nodelist'] = [("::1", 27017),
+        res['nodelist'] = [("/tmp/mongodb-27017.sock", None)]
+        self.assertEqual(res, parse_uri("mongodb:///tmp/mongodb-27017.sock"))
+
+        res = copy.deepcopy(orig)
+        res['nodelist'] = [("example2.com", 27017),
+                           ("/tmp/mongodb-27017.sock", None)]
+        self.assertEqual(res,
+                         parse_uri("mongodb://example2.com,"
+                                   "/tmp/mongodb-27017.sock"))
+
+        res = copy.deepcopy(orig)
+        res['nodelist'] = [("shoe.sock.pants.co.uk", 27017),
+                           ("/tmp/mongodb-27017.sock", None)]
+        res['database'] = "nethers_db"
+        self.assertEqual(res,
+                         parse_uri("mongodb://shoe.sock.pants.co.uk,"
+                                   "/tmp/mongodb-27017.sock/nethers_db"))
+
+        res = copy.deepcopy(orig)
+        res['nodelist'] = [("/tmp/mongodb-27017.sock", None),
+                           ("example2.com", 27017)]
+        res.update({'database': 'test', 'collection': 'yield_historical.in'})
+        self.assertEqual(res,
+                         parse_uri("mongodb:///tmp/mongodb-27017.sock,"
+                                   "example2.com:27017"
+                                   "/test.yield_historical.in"))
+
+        res = copy.deepcopy(orig)
+        res['nodelist'] = [("/tmp/mongodb-27017.sock", None),
+                           ("example2.com", 27017)]
+        res.update({'database': 'test', 'collection': 'yield_historical.sock'})
+        self.assertEqual(res,
+                         parse_uri("mongodb:///tmp/mongodb-27017.sock,"
+                                   "example2.com:27017"
+                                   "/test.yield_historical.sock"))
+
+        res = copy.deepcopy(orig)
+        res['nodelist'] = [("example2.com", 27017)]
+        res.update({'database': 'test', 'collection': 'yield_historical.sock'})
+        self.assertEqual(res,
+                         parse_uri("mongodb://example2.com:27017"
+                                   "/test.yield_historical.sock"))
+
+        res = copy.deepcopy(orig)
+        res['nodelist'] = [("/tmp/mongodb-27017.sock", None)]
+        res.update({'database': 'test', 'collection': 'mongodb-27017.sock'})
+        self.assertEqual(res,
+                         parse_uri("mongodb:///tmp/mongodb-27017.sock"
+                                   "/test.mongodb-27017.sock"))
+
+        res = copy.deepcopy(orig)
+        res['nodelist'] = [('/tmp/mongodb-27020.sock', None),
+                           ("::1", 27017),
                            ("2001:0db8:85a3:0000:0000:8a2e:0370:7334", 27018),
                            ("192.168.0.212", 27019),
                            ("localhost", 27018)]
-        self.assertEqual(res, parse_uri("mongodb://[::1]:27017,[2001:0db8:"
+        self.assertEqual(res, parse_uri("mongodb:///tmp/mongodb-27020.sock,"
+                                        "[::1]:27017,[2001:0db8:"
                                         "85a3:0000:0000:8a2e:0370:7334],"
                                         "192.168.0.212:27019,localhost",
                                         27018))

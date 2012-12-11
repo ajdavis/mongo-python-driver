@@ -1,10 +1,10 @@
-:mod:`connection` -- Tools for connecting to MongoDB
-====================================================
+:mod:`mongo_client` -- Tools for connecting to MongoDB
+======================================================
 
-.. automodule:: pymongo.connection
+.. automodule:: pymongo.mongo_client
    :synopsis: Tools for connecting to MongoDB
 
-   .. autoclass:: pymongo.connection.Connection([host='localhost'[, port=27017[, max_pool_size=10[, network_timeout=None[, document_class=dict[, tz_aware=False[, **kwargs]]]]]]])
+   .. autoclass:: pymongo.mongo_client.MongoClient([host='localhost'[, port=27017[, max_pool_size=10[, document_class=dict[, tz_aware=False[, **kwargs]]]]]])
 
       .. automethod:: disconnect
       .. automethod:: close
@@ -12,7 +12,7 @@
 
       .. describe:: c[db_name] || c.db_name
 
-         Get the `db_name` :class:`~pymongo.database.Database` on :class:`Connection` `c`.
+         Get the `db_name` :class:`~pymongo.database.Database` on :class:`MongoClient` `c`.
 
          Raises :class:`~pymongo.errors.InvalidName` if an invalid database name is used.
 
@@ -30,8 +30,6 @@
       .. autoattribute:: tag_sets
       .. autoattribute:: secondary_acceptable_latency_ms
       .. autoattribute:: write_concern
-      .. autoattribute:: slave_okay
-      .. autoattribute:: safe
       .. autoattribute:: is_locked
       .. automethod:: database_names
       .. automethod:: drop_database
@@ -44,6 +42,3 @@
       .. automethod:: set_cursor_manager
       .. automethod:: fsync
       .. automethod:: unlock
-      .. automethod:: get_lasterror_options
-      .. automethod:: set_lasterror_options
-      .. automethod:: unset_lasterror_options

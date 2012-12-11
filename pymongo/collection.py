@@ -26,6 +26,13 @@ from pymongo.cursor import Cursor
 from pymongo.errors import ConfigurationError, InvalidName
 
 
+try:
+    from collections import OrderedDict
+    ordered_types = (SON, OrderedDict)
+except ImportError:
+    ordered_types = SON
+
+
 def _gen_index_name(keys):
     """Generate an index name from the set of fields it is over.
     """
@@ -81,7 +88,7 @@ class Collection(common.BaseObject):
             secondary_acceptable_latency_ms=(
                 database.secondary_acceptable_latency_ms),
             safe=database.safe,
-            **(database.get_lasterror_options()))
+            **database.write_concern)
 
         if not isinstance(name, basestring):
             raise TypeError("name must be an instance "
@@ -142,6 +149,9 @@ class Collection(common.BaseObject):
             them = (other.__database, other.__name)
             return us == them
         return NotImplemented
+
+    def __ne__(self, other):
+        return not self == other
 
     @property
     def full_name(self):
@@ -205,28 +215,45 @@ class Collection(common.BaseObject):
         return ``None``.
 
         Raises :class:`TypeError` if `to_save` is not an instance of
-        :class:`dict`. If `safe` is ``True`` then the save will be
-        checked for errors, raising
-        :class:`~pymongo.errors.OperationFailure` if one
-        occurred. Safe inserts wait for a response from the database,
-        while normal inserts do not.
+        :class:`dict`.
 
-        Any additional keyword arguments imply ``safe=True``, and will
-        be used as options for the resultant `getLastError`
-        command. For example, to wait for replication to 3 nodes, pass
-        ``w=3``.
+        Write concern options can be passed as keyword arguments, overriding
+        any global defaults. Valid options include w=<int/string>,
+        wtimeout=<int>, j=<bool>, or fsync=<bool>. See the parameter list below
+        for a detailed explanation of these options.
+
+        By default an acknowledgment is requested from the server that the
+        save was successful, raising :class:`~pymongo.errors.OperationFailure`
+        if an error occurred. **Passing ``w=0`` disables write acknowledgement
+        and all other write concern options.**
 
         :Parameters:
           - `to_save`: the document to be saved
           - `manipulate` (optional): manipulate the document before
             saving it?
-          - `safe` (optional): check that the save succeeded?
+          - `safe` (optional): **DEPRECATED** - Use `w` instead.
           - `check_keys` (optional): check if keys start with '$' or
             contain '.', raising :class:`~pymongo.errors.InvalidName`
             in either case.
-          - `**kwargs` (optional): any additional arguments imply
-            ``safe=True``, and will be used as options for the
-            `getLastError` command
+          - `w` (optional): (integer or string) If this is a replica set, write
+            operations will block until they have been replicated to the
+            specified number or tagged set of servers. `w=<int>` always includes
+            the replica set primary (e.g. w=3 means write to the primary and wait
+            until replicated to **two** secondaries). **Passing w=0 disables
+            write acknowledgement and all other write concern options.**
+          - `wtimeout` (optional): (integer) Used in conjunction with `w`.
+            Specify a value in milliseconds to control how long to wait for
+            write propagation to complete. If replication does not complete in
+            the given timeframe, a timeout exception is raised.
+          - `j` (optional): If ``True`` block until write operations have been
+            committed to the journal. Ignored if the server is running without
+            journaling.
+          - `fsync` (optional): If ``True`` force the database to fsync all
+            files before returning. When used with `j` the server awaits the
+            next group commit before returning.
+        :Returns:
+          - The ``'_id'`` value of `to_save` or ``[None]`` if `manipulate` is
+            ``False`` and `to_save` has no '_id' field.
 
         .. versionadded:: 1.8
            Support for passing `getLastError` options as keyword
@@ -241,7 +268,7 @@ class Collection(common.BaseObject):
             return self.insert(to_save, manipulate, safe, check_keys, **kwargs)
         else:
             self.update({"_id": to_save["_id"]}, to_save, True,
-                        manipulate, safe, _check_keys=check_keys, **kwargs)
+                        manipulate, safe, check_keys=check_keys, **kwargs)
             return to_save.get("_id", None)
 
     def insert(self, doc_or_docs, manipulate=True,
@@ -258,34 +285,51 @@ class Collection(common.BaseObject):
         an ``"_id"`` one will be added by the server. The server
         does not return the ``"_id"`` it created so ``None`` is returned.
 
-        If `safe` is ``True`` then the insert will be checked for
-        errors, raising :class:`~pymongo.errors.OperationFailure` if
-        one occurred. Safe inserts wait for a response from the
-        database, while normal inserts do not.
+        Write concern options can be passed as keyword arguments, overriding
+        any global defaults. Valid options include w=<int/string>,
+        wtimeout=<int>, j=<bool>, or fsync=<bool>. See the parameter list below
+        for a detailed explanation of these options.
 
-        Any additional keyword arguments imply ``safe=True``, and
-        will be used as options for the resultant `getLastError`
-        command. For example, to wait for replication to 3 nodes, pass
-        ``w=3``.
+        By default an acknowledgment is requested from the server that the
+        insert was successful, raising :class:`~pymongo.errors.OperationFailure`
+        if an error occurred. **Passing ``w=0`` disables write acknowledgement
+        and all other write concern options.**
 
         :Parameters:
           - `doc_or_docs`: a document or list of documents to be
             inserted
-          - `manipulate` (optional): manipulate the documents before
-            inserting?
-          - `safe` (optional): check that the insert succeeded?
-          - `check_keys` (optional): check if keys start with '$' or
-            contain '.', raising :class:`~pymongo.errors.InvalidName`
-            in either case
-          - `continue_on_error` (optional): If True, the database will not stop
-            processing a bulk insert if one fails (e.g. due to duplicate IDs).
-            This makes bulk insert behave similarly to a series of single
+          - `manipulate` (optional): If ``True`` manipulate the documents
+            before inserting.
+          - `safe` (optional): **DEPRECATED** - Use `w` instead.
+          - `check_keys` (optional): If ``True`` check if keys start with '$'
+            or contain '.', raising :class:`~pymongo.errors.InvalidName` in
+            either case.
+          - `continue_on_error` (optional): If ``True``, the database will not
+            stop processing a bulk insert if one fails (e.g. due to duplicate
+            IDs). This makes bulk insert behave similarly to a series of single
             inserts, except lastError will be set if any insert fails, not just
             the last one. If multiple errors occur, only the most recent will
             be reported by :meth:`~pymongo.database.Database.error`.
-          - `**kwargs` (optional): any additional arguments imply
-            ``safe=True``, and will be used as options for the
-            `getLastError` command
+          - `w` (optional): (integer or string) If this is a replica set, write
+            operations will block until they have been replicated to the
+            specified number or tagged set of servers. `w=<int>` always includes
+            the replica set primary (e.g. w=3 means write to the primary and wait
+            until replicated to **two** secondaries). **Passing w=0 disables
+            write acknowledgement and all other write concern options.**
+          - `wtimeout` (optional): (integer) Used in conjunction with `w`.
+            Specify a value in milliseconds to control how long to wait for
+            write propagation to complete. If replication does not complete in
+            the given timeframe, a timeout exception is raised.
+          - `j` (optional): If ``True`` block until write operations have been
+            committed to the journal. Ignored if the server is running without
+            journaling.
+          - `fsync` (optional): If ``True`` force the database to fsync all
+            files before returning. When used with `j` the server awaits the
+            next group commit before returning.
+        :Returns:
+          - The ``'_id'`` value (or list of '_id' values) of `doc_or_docs` or
+            ``[None]`` if manipulate is ``False`` and the documents passed
+            as `doc_or_docs` do not include an '_id' field.
 
         .. note:: `continue_on_error` requires server version **>= 1.9.1**
 
@@ -308,7 +352,7 @@ class Collection(common.BaseObject):
         if manipulate:
             docs = [self.__database._fix_incoming(doc, self) for doc in docs]
 
-        safe, options = self._get_safe_and_lasterror_options(safe, **kwargs)
+        safe, options = self._get_write_mode(safe, **kwargs)
         self.__database.connection._send_message(
             message.insert(self.__full_name, docs,
                            check_keys, safe, options,
@@ -318,17 +362,22 @@ class Collection(common.BaseObject):
         return return_one and ids[0] or ids
 
     def update(self, spec, document, upsert=False, manipulate=False,
-               safe=None, multi=False, _check_keys=False, **kwargs):
+               safe=None, multi=False, check_keys=True, **kwargs):
         """Update a document(s) in this collection.
 
         Raises :class:`TypeError` if either `spec` or `document` is
         not an instance of ``dict`` or `upsert` is not an instance of
-        ``bool``. If `safe` is ``True`` then the update will be
-        checked for errors, raising
-        :class:`~pymongo.errors.OperationFailure` if one
-        occurred. Safe updates require a response from the database,
-        while normal updates do not - thus, setting `safe` to ``True``
-        will negatively impact performance.
+        ``bool``.
+
+        Write concern options can be passed as keyword arguments, overriding
+        any global defaults. Valid options include w=<int/string>,
+        wtimeout=<int>, j=<bool>, or fsync=<bool>. See the parameter list below
+        for a detailed explanation of these options.
+
+        By default an acknowledgment is requested from the server that the
+        update was successful, raising :class:`~pymongo.errors.OperationFailure`
+        if an error occurred. **Passing ``w=0`` disables write acknowledgement
+        and all other write concern options.**
 
         There are many useful `update modifiers`_ which can be used
         when performing updates. For example, here we use the
@@ -342,16 +391,9 @@ class Collection(common.BaseObject):
           >>> list(db.test.find())
           [{u'a': u'b', u'x': u'y', u'_id': ObjectId('...')}]
           >>> db.test.update({"x": "y"}, {"$set": {"a": "c"}})
+          {...}
           >>> list(db.test.find())
           [{u'a': u'c', u'x': u'y', u'_id': ObjectId('...')}]
-
-        If `safe` is ``True`` returns the response to the *lastError*
-        command. Otherwise, returns ``None``.
-
-        Any additional keyword arguments imply ``safe=True``, and will
-        be used as options for the resultant `getLastError`
-        command. For example, to wait for replication to 3 nodes, pass
-        ``w=3``.
 
         :Parameters:
           - `spec`: a ``dict`` or :class:`~bson.son.SON` instance
@@ -367,16 +409,37 @@ class Collection(common.BaseObject):
             :mod:`~pymongo.son_manipulator.SONManipulator` added to
             this :class:`~pymongo.database.Database` will be applied
             to the document before performing the update.
-          - `safe` (optional): check that the update succeeded?
+          - `check_keys` (optional): check if keys in `document` start
+            with '$' or contain '.', raising
+            :class:`~pymongo.errors.InvalidName`. Only applies to
+            document replacement, not modification through $
+            operators.
+          - `safe` (optional): **DEPRECATED** - Use `w` instead.
           - `multi` (optional): update all documents that match
             `spec`, rather than just the first matching document. The
             default value for `multi` is currently ``False``, but this
             might eventually change to ``True``. It is recommended
             that you specify this argument explicitly for all update
             operations in order to prepare your code for that change.
-          - `**kwargs` (optional): any additional arguments imply
-            ``safe=True``, and will be used as options for the
-            `getLastError` command
+          - `w` (optional): (integer or string) If this is a replica set, write
+            operations will block until they have been replicated to the
+            specified number or tagged set of servers. `w=<int>` always includes
+            the replica set primary (e.g. w=3 means write to the primary and wait
+            until replicated to **two** secondaries). **Passing w=0 disables
+            write acknowledgement and all other write concern options.**
+          - `wtimeout` (optional): (integer) Used in conjunction with `w`.
+            Specify a value in milliseconds to control how long to wait for
+            write propagation to complete. If replication does not complete in
+            the given timeframe, a timeout exception is raised.
+          - `j` (optional): If ``True`` block until write operations have been
+            committed to the journal. Ignored if the server is running without
+            journaling.
+          - `fsync` (optional): If ``True`` force the database to fsync all
+            files before returning. When used with `j` the server awaits the
+            next group commit before returning.
+        :Returns:
+          - A document (dict) describing the effect of the update or ``None``
+            if write acknowledgement is disabled.
 
         .. versionadded:: 1.8
            Support for passing `getLastError` options as keyword
@@ -400,15 +463,22 @@ class Collection(common.BaseObject):
         if manipulate:
             document = self.__database._fix_incoming(document, self)
 
-        safe, options = self._get_safe_and_lasterror_options(safe, **kwargs)
+        safe, options = self._get_write_mode(safe, **kwargs)
 
-        # _check_keys is used by save() so we don't upsert pre-existing
-        # documents after adding an invalid key like 'a.b'. It can't really
-        # be used for any other update operations.
+        if document:
+            # If a top level key begins with '$' this is a modify operation
+            # and we should skip key validation. It doesn't matter which key
+            # we check here. Passing a document with a mix of top level keys
+            # starting with and without a '$' is invalid and the server will
+            # raise an appropriate exception.
+            first = document.iterkeys().next()
+            if first.startswith('$'):
+                check_keys = False
+
         return self.__database.connection._send_message(
             message.update(self.__full_name, upsert, multi,
                            spec, document, safe, options,
-                           _check_keys, self.__uuid_subtype), safe)
+                           check_keys, self.__uuid_subtype), safe)
 
     def drop(self):
         """Alias for :meth:`~pymongo.database.Database.drop_collection`.
@@ -428,33 +498,45 @@ class Collection(common.BaseObject):
         .. warning:: Calls to :meth:`remove` should be performed with
            care, as removed data cannot be restored.
 
-        If `safe` is ``True`` then the remove operation will be
-        checked for errors, raising
-        :class:`~pymongo.errors.OperationFailure` if one
-        occurred. Safe removes wait for a response from the database,
-        while normal removes do not.
-
         If `spec_or_id` is ``None``, all documents in this collection
         will be removed. This is not equivalent to calling
         :meth:`~pymongo.database.Database.drop_collection`, however,
         as indexes will not be removed.
 
-        If `safe` is ``True`` returns the response to the *lastError*
-        command. Otherwise, returns ``None``.
+        Write concern options can be passed as keyword arguments, overriding
+        any global defaults. Valid options include w=<int/string>,
+        wtimeout=<int>, j=<bool>, or fsync=<bool>. See the parameter list below
+        for a detailed explanation of these options.
 
-        Any additional keyword arguments imply ``safe=True``, and will
-        be used as options for the resultant `getLastError`
-        command. For example, to wait for replication to 3 nodes, pass
-        ``w=3``.
+        By default an acknowledgment is requested from the server that the
+        remove was successful, raising :class:`~pymongo.errors.OperationFailure`
+        if an error occurred. **Passing ``w=0`` disables write acknowledgement
+        and all other write concern options.**
 
         :Parameters:
           - `spec_or_id` (optional): a dictionary specifying the
             documents to be removed OR any other type specifying the
             value of ``"_id"`` for the document to be removed
-          - `safe` (optional): check that the remove succeeded?
-          - `**kwargs` (optional): any additional arguments imply
-            ``safe=True``, and will be used as options for the
-            `getLastError` command
+          - `safe` (optional): **DEPRECATED** - Use `w` instead.
+          - `w` (optional): (integer or string) If this is a replica set, write
+            operations will block until they have been replicated to the
+            specified number or tagged set of servers. `w=<int>` always includes
+            the replica set primary (e.g. w=3 means write to the primary and wait
+            until replicated to **two** secondaries). **Passing w=0 disables
+            write acknowledgement and all other write concern options.**
+          - `wtimeout` (optional): (integer) Used in conjunction with `w`.
+            Specify a value in milliseconds to control how long to wait for
+            write propagation to complete. If replication does not complete in
+            the given timeframe, a timeout exception is raised.
+          - `j` (optional): If ``True`` block until write operations have been
+            committed to the journal. Ignored if the server is running without
+            journaling.
+          - `fsync` (optional): If ``True`` force the database to fsync all
+            files before returning. When used with `j` the server awaits the
+            next group commit before returning.
+        :Returns:
+          - A document (dict) describing the effect of the remove or ``None``
+            if write acknowledgement is disabled.
 
         .. versionadded:: 1.8
            Support for passing `getLastError` options as keyword arguments.
@@ -477,7 +559,7 @@ class Collection(common.BaseObject):
         if not isinstance(spec_or_id, dict):
             spec_or_id = {"_id": spec_or_id}
 
-        safe, options = self._get_safe_and_lasterror_options(safe, **kwargs)
+        safe, options = self._get_write_mode(safe, **kwargs)
         return self.__database.connection._send_message(
             message.delete(self.__full_name, spec_or_id, safe,
                            options, self.__uuid_subtype), safe)
@@ -736,7 +818,7 @@ class Collection(common.BaseObject):
 
         self.__database.system.indexes.insert(index, manipulate=False,
                                               check_keys=False,
-                                              safe=True)
+                                              **self._get_wc_override())
 
         self.__database.connection._cache_index(self.__database.name,
                                                 self.__name, name, cache_for)
@@ -757,7 +839,7 @@ class Collection(common.BaseObject):
         unconditionally, :meth:`ensure_index` takes advantage of some
         caching within the driver such that it only attempts to create
         indexes that might not already exist. When an index is created
-        (or ensured) by PyMongo it is "remembered" for `ttl`
+        (or ensured) by PyMongo it is "remembered" for `cache_for`
         seconds. Repeated calls to :meth:`ensure_index` within that
         time limit will be lightweight - they will not attempt to
         actually create the index.
@@ -944,9 +1026,9 @@ class Collection(common.BaseObject):
         With :class:`~pymongo.replica_set_connection.ReplicaSetConnection`
         or :class:`~pymongo.master_slave_connection.MasterSlaveConnection`,
         if the `read_preference` attribute of this instance is not set to
-        :attr:`pymongo.ReadPreference.PRIMARY` or the (deprecated)
-        `slave_okay` attribute of this instance is set to `True` the
-        `aggregate command`_ will be sent to a secondary or slave.
+        :attr:`pymongo.read_preferences.ReadPreference.PRIMARY` or the
+        (deprecated) `slave_okay` attribute of this instance is set to `True`
+        the `aggregate command`_ will be sent to a secondary or slave.
 
         :Parameters:
           - `pipeline`: a single command or list of aggregation commands
@@ -1216,7 +1298,8 @@ class Collection(common.BaseObject):
         else:
             return res.get("results")
 
-    def find_and_modify(self, query={}, update=None, upsert=False, **kwargs):
+    def find_and_modify(self, query={}, update=None,
+                        upsert=False, sort=None, **kwargs):
         """Update and return an object.
 
         This is a thin wrapper around the findAndModify_ command. The
@@ -1231,13 +1314,15 @@ class Collection(common.BaseObject):
 
         :Parameters:
             - `query`: filter for the update (default ``{}``)
-            - `sort`: priority if multiple objects match (default ``{}``)
             - `update`: see second argument to :meth:`update` (no default)
+            - `upsert`: insert if object doesn't exist (default ``False``)
+            - `sort`: a list of (key, direction) pairs specifying the sort
+              order for this query. See :meth:`~pymongo.cursor.Cursor.sort`
+              for details.
             - `remove`: remove rather than updating (default ``False``)
             - `new`: return updated rather than original object
               (default ``False``)
             - `fields`: see second argument to :meth:`find` (default all)
-            - `upsert`: insert if object doesn't exist (default ``False``)
             - `**kwargs`: any other options the findAndModify_ command
               supports can be passed here.
 
@@ -1247,6 +1332,9 @@ class Collection(common.BaseObject):
         .. _findAndModify: http://dochub.mongodb.org/core/findAndModify
 
         .. note:: Requires server version **>= 1.3.0**
+
+        .. versionchanged:: 2.4
+           Deprecated the use of mapping types for the sort parameter
 
         .. versionadded:: 1.10
         """
@@ -1263,6 +1351,22 @@ class Collection(common.BaseObject):
             kwargs['update'] = update
         if upsert:
             kwargs['upsert'] = upsert
+        if sort:
+            # Accept a list of tuples to match Cursor's sort parameter.
+            if isinstance(sort, list):
+                kwargs['sort'] = helpers._index_document(sort)
+            # Accept OrderedDict, SON, and dict with len == 1 so we
+            # don't break existing code already using find_and_modify.
+            elif (isinstance(sort, ordered_types) or
+                  isinstance(sort, dict) and len(sort) == 1):
+                warnings.warn("Passing mapping types for `sort` is deprecated,"
+                              " use a list of (key, direction) pairs instead",
+                              DeprecationWarning)
+                kwargs['sort'] = sort
+            else:
+                raise TypeError("sort must be a list of (key, direction) "
+                                 "pairs, a dict of len 1, or an instance of "
+                                 "SON or OrderedDict")
 
         no_obj_error = "No matching object found"
 

@@ -16,10 +16,13 @@
 
 import datetime
 import os
+import threading
+import socket
 import sys
 import time
 import thread
 import unittest
+
 
 sys.path[0:0] = [""]
 
@@ -29,15 +32,17 @@ from bson.son import SON
 from bson.tz_util import utc
 from pymongo.connection import Connection
 from pymongo.database import Database
-from pymongo.pool import NO_REQUEST, NO_SOCKET_YET, SocketInfo
-from pymongo.errors import (AutoReconnect,
-                            ConfigurationError,
+from pymongo.pool import SocketInfo
+from pymongo.errors import (ConfigurationError,
                             ConnectionFailure,
                             InvalidName,
-                            InvalidURI,
                             OperationFailure)
 from test import version
-from test.utils import is_mongos, server_is_master_with_slave, delay
+from test.utils import (is_mongos,
+                        server_is_master_with_slave,
+                        delay,
+                        assertRaisesExactly,
+                        TestRequestMixin)
 
 host = os.environ.get("DB_IP", "localhost")
 port = int(os.environ.get("DB_PORT", 27017))
@@ -47,8 +52,7 @@ def get_connection(*args, **kwargs):
     return Connection(host, port, *args, **kwargs)
 
 
-class TestConnection(unittest.TestCase):
-
+class TestConnection(unittest.TestCase, TestRequestMixin):
     def setUp(self):
         self.host = os.environ.get("DB_IP", "localhost")
         self.port = int(os.environ.get("DB_PORT", 27017))
@@ -69,7 +73,7 @@ class TestConnection(unittest.TestCase):
 
         Connection.HOST = "somedomainthatdoesntexist.org"
         Connection.PORT = 123456789
-        self.assertRaises(ConnectionFailure, Connection, connectTimeoutMS=600)
+        assertRaisesExactly(ConnectionFailure, Connection, connectTimeoutMS=600)
         self.assertTrue(Connection(self.host, self.port))
 
         Connection.HOST = self.host
@@ -77,15 +81,26 @@ class TestConnection(unittest.TestCase):
         self.assertTrue(Connection())
 
     def test_connect(self):
-        self.assertRaises(ConnectionFailure, Connection,
-                          "somedomainthatdoesntexist.org", connectTimeoutMS=600)
-        self.assertRaises(ConnectionFailure, Connection, self.host, 123456789)
+        # Check that the exception is a ConnectionFailure, not a subclass like
+        # AutoReconnect
+        assertRaisesExactly(
+            ConnectionFailure, Connection,
+            "somedomainthatdoesntexist.org", connectTimeoutMS=600)
+
+        assertRaisesExactly(
+            ConnectionFailure, Connection, self.host, 123456789)
 
         self.assertTrue(Connection(self.host, self.port))
 
+    def test_equality(self):
+        connection = Connection(self.host, self.port)
+        self.assertEqual(connection, Connection(self.host, self.port))
+        # Explicity test inequality
+        self.assertFalse(connection != Connection(self.host, self.port))
+
     def test_host_w_port(self):
         self.assertTrue(Connection("%s:%d" % (self.host, self.port)))
-        self.assertRaises(ConnectionFailure, Connection,
+        assertRaisesExactly(ConnectionFailure, Connection,
                           "%s:1234567" % (self.host,), self.port)
 
     def test_repr(self):
@@ -176,6 +191,7 @@ class TestConnection(unittest.TestCase):
         self.assertEqual("bar", c.pymongo_test1.test.find_one()["foo"])
 
         c.end_request()
+        self.assertFalse(c.in_request())
         c.copy_database("pymongo_test", "pymongo_test2",
                         "%s:%d" % (self.host, self.port))
         # copy_database() didn't accidentally restart the request
@@ -237,15 +253,21 @@ class TestConnection(unittest.TestCase):
         self.assertEqual(c, Connection("mongodb://%s:%d" %
                                        (self.host, self.port)))
 
+        self.assertTrue(Connection("mongodb://%s:%d" %
+                                (self.host, self.port),
+                                slave_okay=True).slave_okay)
+        self.assertTrue(Connection("mongodb://%s:%d/?slaveok=true;w=2" %
+                                (self.host, self.port)).slave_okay)
+
+    def test_auth_from_uri(self):
+        c = Connection(self.host, self.port)
+        # Sharded auth not supported before MongoDB 2.0
+        if is_mongos(c) and not version.at_least(c, (2, 0, 0)):
+            raise SkipTest("Auth with sharding requires MongoDB >= 2.0.0")
+
         c.admin.system.users.remove({})
         c.pymongo_test.system.users.remove({})
-
-        try:
-            # First admin user add fails gle in MongoDB >= 2.1.2
-            # See SERVER-4225 for more information.
-            c.admin.add_user("admin", "pass")
-        except OperationFailure:
-            pass
+        c.admin.add_user("admin", "pass")
         c.admin.authenticate("admin", "pass")
         c.pymongo_test.add_user("user", "pass")
 
@@ -266,13 +288,29 @@ class TestConnection(unittest.TestCase):
         Connection("mongodb://user:pass@%s:%d/pymongo_test" %
                    (self.host, self.port))
 
-        self.assertTrue(Connection("mongodb://%s:%d" %
-                                (self.host, self.port),
-                                slave_okay=True).slave_okay)
-        self.assertTrue(Connection("mongodb://%s:%d/?slaveok=true;w=2" %
-                                (self.host, self.port)).slave_okay)
         c.admin.system.users.remove({})
         c.pymongo_test.system.users.remove({})
+
+    def test_unix_socket(self):
+        if not hasattr(socket, "AF_UNIX"):
+            raise SkipTest("UNIX-sockets are not supported on this system")
+
+        mongodb_socket = '/tmp/mongodb-27017.sock'
+        if not os.access(mongodb_socket, os.R_OK):
+            raise SkipTest("Socket file is not accessable")
+
+        self.assertTrue(Connection("mongodb://%s" % mongodb_socket))
+
+        connection = Connection("mongodb://%s" % mongodb_socket)
+        connection.pymongo_test.test.save({"dummy": "object"})
+
+        # Confirm we can read via the socket
+        dbs = connection.database_names()
+        self.assertTrue("pymongo_test" in dbs)
+
+        # Confirm it fails with a missing socket
+        self.assertRaises(ConnectionFailure, Connection,
+                          "mongodb:///tmp/none-existent.sock")
 
     def test_fork(self):
         # Test using a connection before and after a fork.
@@ -363,9 +401,28 @@ class TestConnection(unittest.TestCase):
 
     def test_timeouts(self):
         conn = Connection(self.host, self.port, connectTimeoutMS=10500)
-        self.assertEqual(10.5, conn._Connection__pool.conn_timeout)
+        self.assertEqual(10.5, conn._MongoClient__pool.conn_timeout)
         conn = Connection(self.host, self.port, socketTimeoutMS=10500)
-        self.assertEqual(10.5, conn._Connection__pool.net_timeout)
+        self.assertEqual(10.5, conn._MongoClient__pool.net_timeout)
+
+    def test_network_timeout_validation(self):
+        c = get_connection(network_timeout=10)
+        self.assertEqual(10, c._MongoClient__net_timeout)
+
+        c = get_connection(network_timeout=None)
+        self.assertEqual(None, c._MongoClient__net_timeout)
+
+        self.assertRaises(ConfigurationError,
+            get_connection, network_timeout=0)
+
+        self.assertRaises(ConfigurationError,
+            get_connection, network_timeout=-1)
+
+        self.assertRaises(ConfigurationError,
+            get_connection, network_timeout=1e10)
+
+        self.assertRaises(ConfigurationError,
+            get_connection, network_timeout='foo')
 
     def test_network_timeout(self):
         no_timeout = Connection(self.host, self.port)
@@ -434,6 +491,11 @@ class TestConnection(unittest.TestCase):
         c = get_connection()
         if is_mongos(c):
             raise SkipTest('fsync/lock not supported by mongos')
+
+        res = c.admin.command('getCmdLineOpts')
+        if '--master' in res['argv'] and version.at_least(c, (2, 3, 0)):
+            raise SkipTest('SERVER-7714')
+
         self.assertFalse(c.is_locked)
         # async flushing not supported on windows...
         if sys.platform not in ('cygwin', 'win32'):
@@ -462,14 +524,14 @@ class TestConnection(unittest.TestCase):
 
         # The socket used for the previous commands has been returned to the
         # pool
-        self.assertEqual(1, len(conn._Connection__pool.sockets))
+        self.assertEqual(1, len(conn._MongoClient__pool.sockets))
 
         # We need exec here because if the Python version is less than 2.6
         # these with-statements won't even compile.
         exec """
 with contextlib.closing(conn):
     self.assertEqual("bar", conn.pymongo_test.test.find_one()["foo"])
-self.assertEqual(0, len(conn._Connection__pool.sockets))
+self.assertEqual(0, len(conn._MongoClient__pool.sockets))
 """
         # Calling conn.close() has reset the pool
         self.assertEqual(0, len(conn._Connection__pool.sockets))
@@ -482,42 +544,14 @@ self.assertEqual(0, len(conn._Connection__pool.sockets))
         # these with-statements won't even compile.
         exec """
 with get_connection(auto_start_request=True) as connection:
-    connection.pymongo_test.test.find_one()
-    # The connection is in a request, so the socket wasn't returned to the
-    # general pool
-    self.assertEqual(0, len(connection._Connection__pool.sockets))
+    self.assertEqual("bar", connection.pymongo_test.test.find_one()["foo"])
+    # Calling conn.close() has reset the pool
+    self.assertEqual(0, len(connection._MongoClient__pool.sockets))
 """
 
-    def get_sock(self, pool):
-        sock_info = pool.get_socket((self.host, self.port))
-        return sock_info
-
-    def assertSameSock(self, pool):
-        sock_info0 = self.get_sock(pool)
-        sock_info1 = self.get_sock(pool)
-        self.assertEqual(sock_info0, sock_info1)
-        pool.maybe_return_socket(sock_info0)
-        pool.maybe_return_socket(sock_info1)
-
-    def assertDifferentSock(self, pool):
-        sock_info0 = self.get_sock(pool)
-        sock_info1 = self.get_sock(pool)
-        self.assertNotEqual(sock_info0, sock_info1)
-        pool.maybe_return_socket(sock_info0)
-        pool.maybe_return_socket(sock_info1)
-
-    def assertNoRequest(self, pool):
-        self.assertEqual(NO_REQUEST, pool._get_request_state())
-
-    def assertNoSocketYet(self, pool):
-        self.assertEqual(NO_SOCKET_YET, pool._get_request_state())
-
-    def assertRequestSocket(self, pool):
-        self.assertTrue(isinstance(pool._get_request_state(), SocketInfo))
-        
     def test_with_start_request(self):
         conn = get_connection(auto_start_request=False)
-        pool = conn._Connection__pool
+        pool = conn._MongoClient__pool
 
         # No request started
         self.assertNoRequest(pool)
@@ -553,7 +587,7 @@ with conn.start_request() as request:
             # Request has ended
             self.assertNoRequest(pool)
             self.assertDifferentSock(pool)
-    
+
     def test_auto_start_request(self):
         for bad_horrible_value in (None, 5, 'hi!'):
             self.assertRaises(
@@ -565,7 +599,7 @@ with conn.start_request() as request:
         conn = get_connection()
         self.assertTrue(conn.auto_start_request)
         self.assertTrue(conn.in_request())
-        pool = conn._Connection__pool
+        pool = conn._MongoClient__pool
 
         # Ensure Connection allocates a socket for this request (currently it
         # ends up with a request socket simply from doing
@@ -583,6 +617,79 @@ with conn.start_request() as request:
         conn.db.test.find_one()
         self.assertRequestSocket(pool)
         self.assertSameSock(pool)
+
+    def test_nested_request(self):
+        # auto_start_request is True
+        conn = get_connection()
+        pool = conn._MongoClient__pool
+        self.assertTrue(conn.in_request())
+
+        # Start and end request - we're still in "outer" original request
+        conn.start_request()
+        self.assertInRequestAndSameSock(conn, pool)
+        conn.end_request()
+        self.assertInRequestAndSameSock(conn, pool)
+
+        # Double-nesting
+        conn.start_request()
+        conn.start_request()
+        conn.end_request()
+        conn.end_request()
+        self.assertInRequestAndSameSock(conn, pool)
+
+        # Finally, end original request
+        conn.end_request()
+        self.assertNotInRequestAndDifferentSock(conn, pool)
+
+        # Extra end_request calls have no effect - count stays at zero
+        conn.end_request()
+        self.assertNotInRequestAndDifferentSock(conn, pool)
+
+        conn.start_request()
+        self.assertInRequestAndSameSock(conn, pool)
+        conn.end_request()
+        self.assertNotInRequestAndDifferentSock(conn, pool)
+
+    def test_request_threads(self):
+        conn = get_connection(auto_start_request=False)
+        pool = conn._MongoClient__pool
+        self.assertNotInRequestAndDifferentSock(conn, pool)
+
+        started_request, ended_request = threading.Event(), threading.Event()
+        checked_request = threading.Event()
+        thread_done = [False]
+
+        # Starting a request in one thread doesn't put the other thread in a
+        # request
+        def f():
+            self.assertNotInRequestAndDifferentSock(conn, pool)
+            conn.start_request()
+            self.assertInRequestAndSameSock(conn, pool)
+            started_request.set()
+            checked_request.wait()
+            checked_request.clear()
+            self.assertInRequestAndSameSock(conn, pool)
+            conn.end_request()
+            self.assertNotInRequestAndDifferentSock(conn, pool)
+            ended_request.set()
+            checked_request.wait()
+            thread_done[0] = True
+
+        t = threading.Thread(target=f)
+        t.setDaemon(True)
+        t.start()
+        # It doesn't matter in what order the main thread or t initially get
+        # to started_request.set() / wait(); by waiting here we ensure that t
+        # has called conn.start_request() before we assert on the next line.
+        started_request.wait()
+        self.assertNotInRequestAndDifferentSock(conn, pool)
+        checked_request.set()
+        ended_request.wait()
+        self.assertNotInRequestAndDifferentSock(conn, pool)
+        checked_request.set()
+        t.join()
+        self.assertNotInRequestAndDifferentSock(conn, pool)
+        self.assertTrue(thread_done[0], "Thread didn't complete")
 
     def test_interrupt_signal(self):
         if sys.platform.startswith('java'):
@@ -634,7 +741,7 @@ with conn.start_request() as request:
         # Ensure Connection doesn't close socket after it gets an error
         # response to getLastError. PYTHON-395.
         c = get_connection(auto_start_request=False)
-        pool = c._Connection__pool
+        pool = c._MongoClient__pool
         self.assertEqual(1, len(pool.sockets))
         old_sock_info = iter(pool.sockets).next()
         c.pymongo_test.test.drop()
@@ -651,7 +758,7 @@ with conn.start_request() as request:
         # Ensure Connection doesn't close socket after it gets an error
         # response to getLastError. PYTHON-395.
         c = get_connection(auto_start_request=True)
-        pool = c._Connection__pool
+        pool = c._MongoClient__pool
 
         # Connection has reserved a socket for this thread
         self.assertTrue(isinstance(pool._get_request_state(), SocketInfo))

@@ -86,6 +86,9 @@ class SocketInfo(object):
         # if its sock is the same as ours
         return hasattr(other, 'sock') and self.sock == other.sock
 
+    def __ne__(self, other):
+        return not self == other
+
     def __hash__(self):
         return hash(self.sock)
 
@@ -121,7 +124,7 @@ class BasePool:
         self.net_timeout = net_timeout
         self.conn_timeout = conn_timeout
         self.use_ssl = use_ssl
-        
+
         # Map self._get_thread_ident() -> request socket
         self._tid_to_sock = {}
 
@@ -130,6 +133,9 @@ class BasePool:
         # as long as what it references, otherwise its delete-callback won't
         # fire.
         self._refs = {}
+
+        # Map self._get_thread_ident() -> # times start_request called
+        self._tid_to_request_count = {}
 
     def reset(self):
         # Ignore this race condition -- if many threads are resetting at once,
@@ -156,6 +162,20 @@ class BasePool:
         CPython >=2.6.
         """
         host, port = pair or self.pair
+
+        # Check if dealing with a unix domain socket
+        if host.endswith('.sock'):
+            if not hasattr(socket, "AF_UNIX"):
+                raise ConnectionFailure("UNIX-sockets are not supported "
+                                        "on this system")
+            sock = socket.socket(socket.AF_UNIX)
+            try:
+                sock.connect(host)
+                return sock
+            except socket.error, e:
+                if sock is not None:
+                    sock.close()
+                raise e
 
         # Don't try IPv6 if we don't support it. Also skip it if host
         # is 'localhost' (::1 is fine). Avoids slow connect issues
@@ -264,14 +284,31 @@ class BasePool:
             # have no socket assigned to the request yet.
             self._set_request_state(NO_SOCKET_YET)
 
+        tid = self._get_thread_ident()
+        if tid in self._tid_to_request_count:
+            self._tid_to_request_count[tid] += 1
+        else:
+            self._tid_to_request_count[tid] = 1
+
     def in_request(self):
         return self._get_request_state() != NO_REQUEST
 
     def end_request(self):
-        sock_info = self._get_request_state()
-        self._set_request_state(NO_REQUEST)
-        if sock_info not in (NO_REQUEST, NO_SOCKET_YET):
-            self._return_socket(sock_info)
+        tid = self._get_thread_ident()
+
+        # Check if start_request has ever been called in this thread / greenlet
+        count = self._tid_to_request_count.get(tid)
+        if count is not None:
+            if count > 1:
+                # Decrement start_request counter
+                self._tid_to_request_count[tid] -= 1
+            else:
+                # End request
+                self._tid_to_request_count.pop(tid)
+                sock_info = self._get_request_state()
+                self._set_request_state(NO_REQUEST)
+                if sock_info not in (NO_REQUEST, NO_SOCKET_YET):
+                    self._return_socket(sock_info)
 
     def discard_socket(self, sock_info):
         """Close and discard the active socket.

@@ -13,12 +13,14 @@
 # limitations under the License.
 
 """Cursor class to iterate over Mongo query results."""
+import copy
 from collections import deque
 
+from bson import RE_TYPE
 from bson.code import Code
 from bson.son import SON
 from pymongo import helpers, message, read_preferences
-from pymongo.read_preferences import ReadPreference
+from pymongo.read_preferences import ReadPreference, secondary_ok_commands
 from pymongo.errors import (InvalidOperation,
                             AutoReconnect)
 
@@ -168,28 +170,24 @@ class Cursor(object):
         unevaluated, even if the current instance has been partially or
         completely evaluated.
         """
-        copy = Cursor(self.__collection, self.__spec, self.__fields,
-                      self.__skip, self.__limit, self.__timeout,
-                      self.__snapshot, self.__tailable)
-        copy.__ordering = self.__ordering
-        copy.__explain = self.__explain
-        copy.__hint = self.__hint
-        copy.__batch_size = self.__batch_size
-        copy.__max_scan = self.__max_scan
-        copy.__as_class = self.__as_class
-        copy.__slave_okay = self.__slave_okay
-        copy.__await_data = self.__await_data
-        copy.__partial = self.__partial
-        copy.__manipulate = self.__manipulate
-        copy.__read_preference = self.__read_preference
-        copy.__tag_sets = self.__tag_sets
-        copy.__secondary_acceptable_latency_ms = (
-            self.__secondary_acceptable_latency_ms)
-        copy.__must_use_master = self.__must_use_master
-        copy.__uuid_subtype = self.__uuid_subtype
-        copy.__query_flags = self.__query_flags
-        copy.__kwargs = self.__kwargs
-        return copy
+        return self.__clone(True)
+
+    def __clone(self, deepcopy=True):
+        clone = Cursor(self.__collection)
+        values_to_clone = ("spec", "fields", "skip", "limit",
+                           "timeout", "snapshot", "tailable",
+                           "ordering", "explain", "hint", "batch_size",
+                           "max_scan", "as_class",  "slave_okay", "await_data",
+                           "partial", "manipulate", "read_preference",
+                           "tag_sets", "secondary_acceptable_latency_ms",
+                           "must_use_master", "uuid_subtype", "query_flags",
+                           "kwargs")
+        data = dict((k, v) for k, v in self.__dict__.iteritems()
+                    if k.startswith('_Cursor__') and k[9:] in values_to_clone)
+        if deepcopy:
+            data = self.__deepcopy(data)
+        clone.__dict__.update(data)
+        return clone
 
     def __die(self):
         """Closes this cursor.
@@ -223,21 +221,57 @@ class Cursor(object):
             operators["$snapshot"] = True
         if self.__max_scan:
             operators["$maxScan"] = self.__max_scan
-        if self.__collection.database.connection.is_mongos:
-            read_pref = {
-                'mode': read_preferences.mongos_mode(self.__read_preference)}
+        # Only set $readPreference if it's something other than
+        # PRIMARY to avoid problems with mongos versions that
+        # don't support read preferences.
+        if (self.__collection.database.connection.is_mongos and
+            self.__read_preference != ReadPreference.PRIMARY):
 
-            if self.__tag_sets and self.__tag_sets != [{}]:
-                read_pref['tags'] = self.__tag_sets
+            has_tags = self.__tag_sets and self.__tag_sets != [{}]
 
-            operators['$readPreference'] = read_pref
+            # For maximum backwards compatibility, don't set $readPreference
+            # for SECONDARY_PREFERRED unless tags are in use. Just rely on
+            # the slaveOkay bit (set automatically if read preference is not
+            # PRIMARY), which has the same behavior.
+            if (self.__read_preference != ReadPreference.SECONDARY_PREFERRED or
+                has_tags):
+
+                read_pref = {
+                    'mode': read_preferences.mongos_mode(self.__read_preference)
+                }
+                if has_tags:
+                    read_pref['tags'] = self.__tag_sets
+
+                operators['$readPreference'] = read_pref
 
         if operators:
             # Make a shallow copy so we can cleanly rewind or clone.
             spec = self.__spec.copy()
+
+            # Only commands that can be run on secondaries should have any
+            # operators added to the spec.  Command queries can be issued
+            # by db.command or calling find_one on $cmd directly
+            if self.collection.name == "$cmd":
+                # Don't change commands that can't be sent to secondaries
+                command_name = spec and spec.keys()[0].lower() or ""
+                if command_name not in secondary_ok_commands:
+                    return spec
+                elif command_name == 'mapreduce':
+                    # mapreduce shouldn't be changed if its not inline
+                    out = spec.get('out')
+                    if not isinstance(out, dict) or not out.get('inline'):
+                        return spec
+
+            # White-listed commands must be wrapped in $query.
             if "$query" not in spec:
                 # $query has to come first
-                spec = SON({"$query": spec})
+                spec = SON([("$query", spec)])
+
+            if not isinstance(spec, SON):
+                # Ensure the spec is SON. As order is important this will
+                # ensure its set before merging in any extra operators.
+                spec = SON(spec)
+
             spec.update(operators)
             return spec
         # Have to wrap with $query if "query" is the first key.
@@ -247,7 +281,7 @@ class Cursor(object):
         # was passed as an instance of SON or OrderedDict.
         elif ("query" in self.__spec and
               (len(self.__spec) == 1 or self.__spec.keys()[0] == "query")):
-                return SON({"$query": self.__spec})
+            return SON({"$query": self.__spec})
 
         return self.__spec
 
@@ -528,7 +562,7 @@ class Cursor(object):
         database = self.__collection.database
         r = database.command("count", self.__collection.name,
                              allowable_errors=["ns missing"],
-                             uuid_subtype = self.__uuid_subtype,
+                             uuid_subtype=self.__uuid_subtype,
                              **command)
         if r.get("errmsg", "") == "ns missing":
             return 0
@@ -576,7 +610,7 @@ class Cursor(object):
         database = self.__collection.database
         return database.command("distinct",
                                 self.__collection.name,
-                                uuid_subtype = self.__uuid_subtype,
+                                uuid_subtype=self.__uuid_subtype,
                                 **options)["values"]
 
     def explain(self):
@@ -740,6 +774,8 @@ class Cursor(object):
             self.__send_message(
                 message.get_more(self.__collection.full_name,
                                  limit, self.__id))
+        else:  # Cursor id is zero nothing else to return
+            self.__killed = True
 
         return len(self.__data)
 
@@ -789,3 +825,38 @@ class Cursor(object):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.__die()
+
+    def __copy__(self):
+        """Support function for `copy.copy()`.
+
+        .. versionadded:: 2.4
+        """
+        return self.__clone(deepcopy=False)
+
+    def __deepcopy__(self, memo):
+        """Support function for `copy.deepcopy()`.
+
+        .. versionadded:: 2.4
+        """
+        return self.__clone(deepcopy=True)
+
+    def __deepcopy(self, x, memo=None):
+        """Deepcopy helper for the data dictionary.
+
+        Regular expressions cannot be deep copied but as they are immutable we
+        don't have to copy them when cloning.
+        """
+        y = {}
+        if memo is None:
+            memo = {}
+        val_id = id(x)
+        if val_id in memo:
+            return memo.get(val_id)
+        memo[val_id] = y
+        for key, value in x.iteritems():
+            if isinstance(value, dict):
+                value = self.__deepcopy(value, memo)
+            elif not isinstance(value, RE_TYPE):
+                value = copy.deepcopy(value, memo)
+            y[copy.deepcopy(key, memo)] = value
+        return y

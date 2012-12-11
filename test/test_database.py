@@ -34,6 +34,7 @@ from pymongo import (ALL,
 from pymongo.collection import Collection
 from pymongo.database import Database
 from pymongo.errors import (CollectionInvalid,
+                            ConfigurationError,
                             InvalidName,
                             OperationFailure)
 from pymongo.son_manipulator import (AutoReference,
@@ -57,10 +58,14 @@ class TestDatabase(unittest.TestCase):
                           self.connection, u"my\u0000db")
         self.assertEqual("name", Database(self.connection, "name").name)
 
-    def test_cmp(self):
+    def test_equality(self):
         self.assertNotEqual(Database(self.connection, "test"),
                             Database(self.connection, "mike"))
         self.assertEqual(Database(self.connection, "test"),
+                         Database(self.connection, "test"))
+
+        # Explicitly test inequality
+        self.assertFalse(Database(self.connection, "test") !=
                          Database(self.connection, "test"))
 
     def test_repr(self):
@@ -167,6 +172,8 @@ class TestDatabase(unittest.TestCase):
         self.assertRaises(ValueError, db.set_profiling_level, 5.5)
         self.assertRaises(ValueError, db.set_profiling_level, None)
         self.assertRaises(ValueError, db.set_profiling_level, -1)
+        self.assertRaises(TypeError, db.set_profiling_level, SLOW_ONLY, 5.5)
+        self.assertRaises(TypeError, db.set_profiling_level, SLOW_ONLY, '1')
 
         db.set_profiling_level(SLOW_ONLY)
         self.assertEqual(db.profiling_level(), SLOW_ONLY)
@@ -176,6 +183,15 @@ class TestDatabase(unittest.TestCase):
 
         db.set_profiling_level(OFF)
         self.assertEqual(db.profiling_level(), OFF)
+
+        db.set_profiling_level(SLOW_ONLY, 50)
+        self.assertEqual(50, db.command("profile", -1)['slowms'])
+
+        db.set_profiling_level(ALL, -1)
+        self.assertEqual(-1, db.command("profile", -1)['slowms'])
+
+        db.set_profiling_level(OFF, 100)  # back to default
+        self.assertEqual(100, db.command("profile", -1)['slowms'])
 
     def test_profiling_info(self):
         if is_mongos(self.connection):
@@ -286,9 +302,19 @@ class TestDatabase(unittest.TestCase):
                          u"81e0e2364499209f466e75926a162d73")
 
     def test_authenticate_add_remove_user(self):
+        if (is_mongos(self.connection) and not
+            version.at_least(self.connection, (2, 0, 0))):
+            raise SkipTest("Auth with sharding requires MongoDB >= 2.0.0")
         db = self.connection.pymongo_test
         db.system.users.remove({})
         db.remove_user("mike")
+
+        self.assertRaises(TypeError, db.add_user, "user", None)
+        self.assertRaises(TypeError, db.add_user, "user", '')
+        self.assertRaises(TypeError, db.add_user, "user", 'password', None)
+        self.assertRaises(ConfigurationError, db.add_user,
+                          "user", 'password', 'True')
+
         db.add_user("mike", "password")
 
         self.assertRaises(TypeError, db.authenticate, 5, "password")
@@ -319,6 +345,9 @@ class TestDatabase(unittest.TestCase):
         db.logout()
 
     def test_authenticate_and_safe(self):
+        if (is_mongos(self.connection) and not
+            version.at_least(self.connection, (2, 0, 0))):
+            raise SkipTest("Auth with sharding requires MongoDB >= 2.0.0")
         db = self.connection.auth_test
         db.system.users.remove({})
         db.add_user("bernie", "password")
@@ -341,6 +370,9 @@ class TestDatabase(unittest.TestCase):
 
 
     def test_authenticate_and_request(self):
+        if (is_mongos(self.connection) and not
+            version.at_least(self.connection, (2, 0, 0))):
+            raise SkipTest("Auth with sharding requires MongoDB >= 2.0.0")
         # Database.authenticate() needs to be in a request - check that it
         # always runs in a request, and that it restores the request state
         # (in or not in a request) properly when it's finished.
@@ -605,18 +637,20 @@ class TestDatabase(unittest.TestCase):
 
         self.assertRaises(OperationFailure, db.system_js.non_existant)
 
-        db.system_js.no_param = Code("return 5;")
-        self.assertEqual(5, db.system_js.no_param())
+        # XXX: Broken in V8, works in SpiderMonkey
+        if not version.at_least(db.connection, (2, 3, 0)):
+            db.system_js.no_param = Code("return 5;")
+            self.assertEqual(5, db.system_js.no_param())
 
     def test_system_js_list(self):
         db = self.connection.pymongo_test
         db.system.js.remove()
         self.assertEqual([], db.system_js.list())
 
-        db.system_js.foo = "blah"
+        db.system_js.foo = "function() { return 'blah'; }"
         self.assertEqual(["foo"], db.system_js.list())
 
-        db.system_js.bar = "baz"
+        db.system_js.bar = "function() { return 'baz'; }"
         self.assertEqual(set(["foo", "bar"]), set(db.system_js.list()))
 
         del db.system_js.foo

@@ -67,7 +67,7 @@ class Database(common.BaseObject):
                              secondary_acceptable_latency_ms=(
                                  connection.secondary_acceptable_latency_ms),
                              safe=connection.safe,
-                             **(connection.get_lasterror_options()))
+                             **connection.write_concern)
 
         if not isinstance(name, basestring):
             raise TypeError("name must be an instance "
@@ -182,6 +182,9 @@ class Database(common.BaseObject):
             them = (other.__connection, other.__name)
             return us == them
         return NotImplemented
+
+    def __ne__(self, other):
+        return not self == other
 
     def __repr__(self):
         return "Database(%r, %r)" % (self.__connection, self.__name)
@@ -350,9 +353,9 @@ class Database(common.BaseObject):
         if isinstance(command, basestring):
             command = SON([(command, value)])
 
-        command_name = command.keys()[0]
+        command_name = command.keys()[0].lower()
         must_use_master = kwargs.pop('_use_master', False)
-        if command_name.lower() not in rp.secondary_ok_commands:
+        if command_name not in rp.secondary_ok_commands:
             must_use_master = True
 
         # Special-case: mapreduce can go to secondaries only if inline
@@ -367,7 +370,6 @@ class Database(common.BaseObject):
             '_must_use_master': must_use_master,
             '_uuid_subtype': uuid_subtype
         }
-
 
         extra_opts['read_preference'] = kwargs.pop(
             'read_preference',
@@ -496,10 +498,9 @@ class Database(common.BaseObject):
             idle operations in the result
          """
         if include_all:
-            return self['$cmd.sys.inprog'].find_one({"$all":True})
+            return self['$cmd.sys.inprog'].find_one({"$all": True})
         else:
             return self['$cmd.sys.inprog'].find_one()
-
 
     def profiling_level(self):
         """Get the database's current profiling level.
@@ -514,22 +515,44 @@ class Database(common.BaseObject):
         assert result["was"] >= 0 and result["was"] <= 2
         return result["was"]
 
-    def set_profiling_level(self, level):
+    def set_profiling_level(self, level, slow_ms=None):
         """Set the database's profiling level.
+
+        :Parameters:
+          - `level`: Specifies a profiling level, see list of possible values
+            below.
+          - `slow_ms`: Optionally modify the threshold for the profile to
+            consider a query or operation.  Even if the profiler is off queries
+            slower than the `slow_ms` level will get written to the logs.
+
+        Possible `level` values:
+
+        +----------------------------+------------------------------------+
+        | Level                      | Setting                            |
+        +============================+====================================+
+        | :data:`~pymongo.OFF`       | Off. No profiling.                 |
+        +----------------------------+------------------------------------+
+        | :data:`~pymongo.SLOW_ONLY` | On. Only includes slow operations. |
+        +----------------------------+------------------------------------+
+        | :data:`~pymongo.ALL`       | On. Includes all operations.       |
+        +----------------------------+------------------------------------+
 
         Raises :class:`ValueError` if level is not one of
         (:data:`~pymongo.OFF`, :data:`~pymongo.SLOW_ONLY`,
         :data:`~pymongo.ALL`).
-
-        :Parameters:
-          - `level`: the profiling level to use
 
         .. mongodoc:: profiling
         """
         if not isinstance(level, int) or level < 0 or level > 2:
             raise ValueError("level must be one of (OFF, SLOW_ONLY, ALL)")
 
-        self.command("profile", level)
+        if slow_ms is not None and not isinstance(slow_ms, int):
+            raise TypeError("slow_ms must be an integer")
+
+        if slow_ms is not None:
+            self.command("profile", level, slowms=slow_ms)
+        else:
+            self.command("profile", level)
 
     def profiling_info(self):
         """Returns a list containing current profiling information.
@@ -602,12 +625,20 @@ class Database(common.BaseObject):
 
         .. versionadded:: 1.4
         """
-        pwd = helpers._password_digest(name, password)
-        self.system.users.update({"user": name},
-                                 {"user": name,
-                                  "pwd": pwd,
-                                  "readOnly": read_only},
-                                 upsert=True, safe=True)
+
+        user = self.system.users.find_one({"user": name}) or {"user": name}
+        user["pwd"] = helpers._password_digest(name, password)
+        user["readOnly"] = common.validate_boolean('read_only', read_only)
+
+        try:
+            self.system.users.save(user, **self._get_wc_override())
+        except OperationFailure, e:
+            # First admin user add fails gle in MongoDB >= 2.1.2
+            # See SERVER-4225 for more information.
+            if 'login' in str(e):
+                pass
+            else:
+                raise
 
     def remove_user(self, name):
         """Remove user `name` from this :class:`Database`.
@@ -620,7 +651,7 @@ class Database(common.BaseObject):
 
         .. versionadded:: 1.4
         """
-        self.system.users.remove({"user": name}, safe=True)
+        self.system.users.remove({"user": name}, **self._get_wc_override())
 
     def authenticate(self, name, password):
         """Authenticate to use this database.
@@ -802,13 +833,14 @@ class SystemJS(object):
         object.__setattr__(self, "_db", database)
 
     def __setattr__(self, name, code):
-        self._db.system.js.save({"_id": name, "value": Code(code)}, safe=True)
+        self._db.system.js.save({"_id": name, "value": Code(code)},
+                                **self._db._get_wc_override())
 
     def __setitem__(self, name, code):
         self.__setattr__(name, code)
 
     def __delattr__(self, name):
-        self._db.system.js.remove({"_id": name}, safe=True)
+        self._db.system.js.remove({"_id": name}, **self._db._get_wc_override())
 
     def __delitem__(self, name):
         self.__delattr__(name)

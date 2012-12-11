@@ -113,10 +113,17 @@ class GridFS(object):
         .. versionadded:: 1.6
         """
         grid_file = GridIn(self.__collection, **kwargs)
+
+        # Start a request - necessary if w=0, harmless otherwise
+        request = self.__collection.database.connection.start_request()
         try:
-            grid_file.write(data)
+            try:
+                grid_file.write(data)
+            finally:
+                grid_file.close()
         finally:
-            grid_file.close()
+            # Ensure request is ended even if close() throws error
+            request.end()
         return grid_file._id
 
     def get(self, file_id):
@@ -230,7 +237,8 @@ class GridFS(object):
 
         .. versionadded:: 1.6
         """
-        self.__files.remove({"_id": file_id}, safe=True)
+        self.__files.remove({"_id": file_id},
+                            **self.__files._get_wc_override())
         self.__chunks.remove({"files_id": file_id})
 
     def list(self):

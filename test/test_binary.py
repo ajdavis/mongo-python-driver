@@ -15,6 +15,8 @@
 """Tests for the Binary wrapper."""
 
 import base64
+import copy
+import pickle
 import sys
 import unittest
 try:
@@ -22,6 +24,7 @@ try:
     should_test_uuid = True
 except ImportError:
     should_test_uuid = False
+
 sys.path[0:0] = [""]
 
 import bson
@@ -74,6 +77,10 @@ class TestBinary(unittest.TestCase):
         self.assertEqual(two, Binary(b("hello")))
         self.assertNotEqual(two, Binary(b("hello ")))
         self.assertNotEqual(b("hello"), Binary(b("hello")))
+
+        # Explicitly test inequality
+        self.assertFalse(three != Binary(b("hello"), 100))
+        self.assertFalse(two != Binary(b("hello")))
 
     def test_repr(self):
         one = Binary(b("hello world"))
@@ -151,6 +158,7 @@ class TestBinary(unittest.TestCase):
 
         # Test insert and find
         conn = get_connection()
+        conn.pymongo_test.drop_collection('java_uuid')
         coll = conn.pymongo_test.java_uuid
         coll.uuid_subtype = JAVA_LEGACY
 
@@ -222,6 +230,7 @@ class TestBinary(unittest.TestCase):
 
         # Test insert and find
         conn = get_connection()
+        conn.pymongo_test.drop_collection('csharp_uuid')
         coll = conn.pymongo_test.csharp_uuid
         coll.uuid_subtype = CSHARP_LEGACY
 
@@ -270,6 +279,34 @@ class TestBinary(unittest.TestCase):
         self.assertEqual(2, cur.count())
         coll.drop()
 
+    def test_pickle(self):
+        b1 = Binary(b('123'), 2)
+
+        # For testing backwards compatibility with pre-2.4 pymongo
+        if PY3:
+            p = b("\x80\x03cbson.binary\nBinary\nq\x00C\x03123q\x01\x85q"
+                  "\x02\x81q\x03}q\x04X\x10\x00\x00\x00_Binary__subtypeq"
+                  "\x05K\x02sb.")
+        else:
+            p = b("ccopy_reg\n_reconstructor\np0\n(cbson.binary\nBinary\np1\nc"
+                  "__builtin__\nstr\np2\nS'123'\np3\ntp4\nRp5\n(dp6\nS'_Binary"
+                  "__subtype'\np7\nI2\nsb.")
+
+        if not sys.version.startswith('3.0'):
+            self.assertEqual(b1, pickle.loads(p))
+
+        for proto in xrange(pickle.HIGHEST_PROTOCOL + 1):
+            self.assertEqual(b1, pickle.loads(pickle.dumps(b1, proto)))
+
+        if should_test_uuid:
+            uu = uuid.uuid4()
+            uul = UUIDLegacy(uu)
+
+            self.assertEqual(uul, copy.copy(uul))
+            self.assertEqual(uul, copy.deepcopy(uul))
+
+            for proto in xrange(pickle.HIGHEST_PROTOCOL + 1):
+                self.assertEqual(uul, pickle.loads(pickle.dumps(uul, proto)))
 
 if __name__ == "__main__":
     unittest.main()

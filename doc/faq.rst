@@ -14,23 +14,21 @@ for threaded applications.
 How does connection pooling work in PyMongo?
 --------------------------------------------
 
-Every :class:`~pymongo.connection.Connection` instance has built-in
-connection pooling. By default, each thread gets its own socket reserved on its
-first operation. Those sockets are held until
-:meth:`~pymongo.connection.Connection.end_request` is called by that
-thread.
+Every :class:`~pymongo.mongo_client.MongoClient` instance has a built-in
+connection pool. The pool begins with one open connection. Note that
+:attr:`~pymongo.mongo_client.MongoClient.max_pool_size` does not cap the number
+of connections; it only caps the number of idle connections kept open in
+the pool for future use. Thus, if 500 threads simultaneously launch long-running
+queries, PyMongo opens up to 500 connections to MongoDB, then closes all but
+``max_pool_size`` of them as the queries complete.
 
-Calling :meth:`~pymongo.connection.Connection.end_request` allows the
-socket to be returned to the pool, and to be used by other threads
-instead of creating a new socket. Judicious use of this method is
-important for applications with many threads or with long running
-threads that make few calls to PyMongo operations.
-
-Alternatively, a :class:`~pymongo.connection.Connection` created with
-``auto_start_request=False`` will share sockets (safely) among all threads.
-
-When :meth:`~pymongo.connection.Connection.disconnect` is called by any thread,
+When :meth:`~pymongo.mongo_client.MongoClient.disconnect` is called by any thread,
 all sockets are closed. PyMongo will create new sockets as needed.
+
+:class:`~pymongo.mongo_replica_set_client.MongoReplicaSetClient` maintains one
+connection pool per server in your replica set.
+
+.. seealso:: :doc:`examples/requests`
 
 Does PyMongo support Python 3?
 ------------------------------
@@ -47,7 +45,7 @@ Currently there is no great way to use PyMongo in conjunction with `Tornado
 <http://www.tornadoweb.org/>`_ or `Twisted <http://twistedmatrix.com/>`_.
 PyMongo provides built-in connection pooling, so some of the benefits of those
 frameworks can be achieved just by writing multi-threaded code that shares a
-:class:`~pymongo.connection.Connection`.
+:class:`~pymongo.mongo_client.MongoClient`.
 
 There are asynchronous MongoDB drivers in Python: `AsyncMongo for Tornado
 <https://github.com/bitly/asyncmongo>`_ and `TxMongo for Twisted
@@ -62,10 +60,10 @@ avoid blocking the event loop:
   `MongoDB profiler <http://www.mongodb.org/display/DOCS/Database+Profiler>`_
   to watch for slow queries.
 
-- Create a single :class:`~pymongo.connection.Connection` instance for your
+- Create a single :class:`~pymongo.mongo_client.MongoClient` instance for your
   application in your startup code, before starting the IOLoop.
 
-- Configure the :class:`~pymongo.connection.Connection` with a short
+- Configure the :class:`~pymongo.mongo_client.MongoClient` with a short
   ``socketTimeoutMS`` so slow operations result in a
   :class:`~pymongo.errors.TimeoutError`, rather than blocking the loop and
   preventing your application from responding to other requests.
@@ -145,9 +143,9 @@ UTC. In versions >= 1.7, the driver will automatically convert aware
 datetimes to UTC before saving them. By default, datetimes retrieved
 from the server (no matter what version of the driver you're using)
 will be naive and represent UTC. In newer versions of the driver you
-can set the :class:`~pymongo.connection.Connection` `tz_aware`
+can set the :class:`~pymongo.mongo_client.MongoClient` `tz_aware`
 parameter to ``True``, which will cause all
-:class:`~datetime.datetime` instances returned from that Connection to
+:class:`~datetime.datetime` instances returned from that MongoClient to
 be aware (UTC). This setting is recommended, as it can force
 application code to handle timezones properly.
 
@@ -168,8 +166,43 @@ driver enforce a convention for converting :mod:`datetime.date`
 instances to :mod:`datetime.datetime` instances for you, any
 conversion should be performed in your client code.
 
-How can I use PyMongo from a web framework like Django?
--------------------------------------------------------
+.. _web-application-querying-by-objectid:
+
+When I query for a document by ObjectId in my web application I get no result
+-----------------------------------------------------------------------------
+It's common in web applications to encode documents' ObjectIds in URLs, like::
+
+  "/posts/50b3bda58a02fb9a84d8991e"
+
+Your web framework will pass the ObjectId portion of the URL to your request
+handler as a string, so it must be converted to :class:`~bson.objectid.ObjectId`
+before it is passed to :meth:`~pymongo.collection.Collection.find_one`. It is a
+common mistake to forget to do this conversion. Here's how to do it correctly
+in Flask_ (other web frameworks are similar)::
+
+  from pymongo import MongoClient
+  from bson.objectid import ObjectId
+
+  from flask import Flask, render_template
+
+  connection = MongoClient()
+  app = Flask(__name__)
+
+  @app.route("/posts/<_id>")
+  def show_post(_id):
+     # NOTE!: converting _id from string to ObjectId before passing to find_one
+     post = connection.db.posts.find_one({'_id': ObjectId(_id)})
+     return render_template('post.html', post=post)
+
+  if __name__ == "__main__":
+      app.run()
+
+.. _Flask: http://flask.pocoo.org/
+
+.. seealso:: :ref:`querying-by-objectid`
+
+How can I use PyMongo from Django?
+----------------------------------
 `Django <http://www.djangoproject.com/>`_ is a popular Python web
 framework. Django includes an ORM, :mod:`django.db`. Currently,
 there's no official MongoDB backend for Django.

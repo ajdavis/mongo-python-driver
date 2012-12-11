@@ -548,13 +548,14 @@ class TestCollection(unittest.TestCase):
         doc_class = None
         # Work around http://bugs.jython.org/issue1728
         if (sys.platform.startswith('java') and
-            sys.version_info[:3] == (2, 5, 2)):
+            sys.version_info[:3] >= (2, 5, 2)):
             doc_class = SON
 
         def remove_insert_find_one(doc):
             db.test.remove({}, safe=True)
             db.test.insert(doc, safe=True)
-            return db.test.find_one(as_class=doc_class) == doc
+            # SON equality is order sensitive.
+            return db.test.find_one(as_class=doc_class) == doc.to_dict()
 
         qcheck.check_unittest(self, remove_insert_find_one,
                               qcheck.gen_mongo_dict(3))
@@ -1027,6 +1028,45 @@ class TestCollection(unittest.TestCase):
         self.assertEqual(0, db.test.update({"_id": "foo"},
                                            {"$inc": {"x": 2}},
                                            safe=True)["n"])
+
+    def test_update_with_invalid_keys(self):
+        self.db.drop_collection("test")
+        self.assertTrue(self.db.test.insert({"hello": "world"}, safe=True))
+        doc = self.db.test.find_one()
+        doc['a.b'] = 'c'
+
+        # Replace
+        self.assertRaises(InvalidDocument,
+                          self.db.test.update, {"hello": "world"}, doc)
+        # Upsert
+        self.assertRaises(InvalidDocument,
+                          self.db.test.update, {"foo": "bar"}, doc, upsert=True)
+
+        # Check that the last two ops didn't actually modify anything
+        self.assertTrue('a.b' not in self.db.test.find_one())
+
+        # Modify shouldn't check keys...
+        self.assertTrue(self.db.test.update({"hello": "world"},
+                                            {"$set": {"foo.bar": "baz"}},
+                                            upsert=True, safe=True))
+
+        # I know this seems like testing the server but I'd like to be notified
+        # by CI if the server's behavior changes here.
+        doc = SON([("$set", {"foo.bar": "bim"}), ("hello", "world")])
+        self.assertRaises(OperationFailure, self.db.test.update,
+                          {"hello": "world"}, doc, upsert=True, safe=True)
+
+        # This is going to cause keys to be checked and raise InvalidDocument.
+        # That's OK assuming the server's behavior in the previous assert
+        # doesn't change. If the behavior changes checking the first key for
+        # '$' in update won't be good enough anymore.
+        doc = SON([("hello", "world"), ("$set", {"foo.bar": "bim"})])
+        self.assertRaises(InvalidDocument, self.db.test.update,
+                          {"hello": "world"}, doc, upsert=True, safe=True)
+
+        # Replace with empty document
+        self.assertNotEqual(0, self.db.test.update({"hello": "world"},
+                            {}, safe=True)['n'])
 
     def test_safe_save(self):
         db = self.db
@@ -1674,6 +1714,54 @@ class TestCollection(unittest.TestCase):
                                     new=True, fields={'i': 1},
                                     as_class=ExtendedDict)
         self.assertTrue(isinstance(result, ExtendedDict))
+
+    def test_find_and_modify_with_sort(self):
+        c = self.db.test
+        c.drop()
+        for j in xrange(5):
+            c.insert({'j': j, 'i': 0}, safe=True)
+
+        sort={'j': DESCENDING}
+        self.assertEqual(4, c.find_and_modify({},
+                                              {'$inc': {'i': 1}},
+                                              sort=sort)['j'])
+        sort={'j': ASCENDING}
+        self.assertEqual(0, c.find_and_modify({},
+                                              {'$inc': {'i': 1}},
+                                              sort=sort)['j'])
+        sort=[('j', DESCENDING)]
+        self.assertEqual(4, c.find_and_modify({},
+                                              {'$inc': {'i': 1}},
+                                              sort=sort)['j'])
+        sort=[('j', ASCENDING)]
+        self.assertEqual(0, c.find_and_modify({},
+                                              {'$inc': {'i': 1}},
+                                              sort=sort)['j'])
+        sort=SON([('j', DESCENDING)])
+        self.assertEqual(4, c.find_and_modify({},
+                                              {'$inc': {'i': 1}},
+                                              sort=sort)['j'])
+        sort=SON([('j', ASCENDING)])
+        self.assertEqual(0, c.find_and_modify({},
+                                              {'$inc': {'i': 1}},
+                                              sort=sort)['j'])
+        try:
+            from collections import OrderedDict
+            sort=OrderedDict([('j', DESCENDING)])
+            self.assertEqual(4, c.find_and_modify({},
+                                                  {'$inc': {'i': 1}},
+                                                  sort=sort)['j'])
+            sort=OrderedDict([('j', ASCENDING)])
+            self.assertEqual(0, c.find_and_modify({},
+                                                  {'$inc': {'i': 1}},
+                                                  sort=sort)['j'])
+        except ImportError:
+            pass
+        # Test that a standard dict with two keys is rejected.
+        sort={'j': DESCENDING, 'foo': DESCENDING}
+        self.assertRaises(TypeError, c.find_and_modify, {},
+                                                         {'$inc': {'i': 1}},
+                                                         sort=sort)
 
     def test_find_with_nested(self):
         if not version.at_least(self.db.connection, (2, 0, 0)):

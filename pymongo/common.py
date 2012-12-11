@@ -101,7 +101,10 @@ def validate_positive_float(option, value):
         value = float(value)
     except (ValueError, TypeError):
         raise err
-    if value <= 0:
+
+    # float('inf') doesn't work in 2.4 or 2.5 on Windows, so just cap floats at
+    # one billion - this is a reasonable approximation for infinity
+    if not 0 < value < 1e9:
         raise err
 
     return value
@@ -190,6 +193,22 @@ SAFE_OPTIONS = frozenset([
 ])
 
 
+class WriteConcern(dict):
+
+    def __init__(self, *args, **kwargs):
+        """A subclass of dict that overrides __setitem__ to
+        validate write concern options.
+        """
+        super(WriteConcern, self).__init__(*args, **kwargs)
+
+    def __setitem__(self, key, value):
+        if key not in SAFE_OPTIONS:
+            raise ConfigurationError("%s is not a valid write "
+                                     "concern option." % (key,))
+        key, value = validate(key, value)
+        super(WriteConcern, self).__setitem__(key, value)
+
+
 class BaseObject(object):
     """A base class that provides attributes and methods common
     to multiple pymongo classes.
@@ -204,7 +223,7 @@ class BaseObject(object):
         self.__tag_sets = [{}]
         self.__secondary_acceptable_latency_ms = 15
         self.__safe = None
-        self.__safe_opts = {}
+        self.__write_concern = WriteConcern()
         self.__set_options(options)
         if (self.__read_pref == ReadPreference.PRIMARY
             and self.__tag_sets != [{}]
@@ -214,23 +233,28 @@ class BaseObject(object):
 
         # If safe hasn't been implicitly set by write concerns then set it.
         if self.__safe is None:
-            self.__safe = validate_boolean('safe', options.get("safe", False))
-        if self.__safe and not options.get("safe", True):
-            warnings.warn("Conflicting write concerns.  Safe set as False "
-                          "but write concerns have been set making safe True. "
-                          "Please set safe to True.", UserWarning)
+            if options.get("w") == 0:
+                self.__safe = False
+            else:
+                self.__safe = validate_boolean('safe', options.get("safe", True))
+        # Note: 'safe' is always passed by Connection and ReplicaSetConnection
+        # Always do the most "safe" thing, but warn about conflicts.
+        if self.__safe and options.get('w') == 0:
+            warnings.warn("Conflicting write concerns.  'w' set to 0 "
+                          "but other options have enabled write concern. "
+                          "Please set 'w' to a value other than 0.",
+                          UserWarning)
 
-    def __set_safe_option(self, option, value, check=False):
+    def __set_safe_option(self, option, value):
         """Validates and sets getlasterror options for this
         object (Connection, Database, Collection, etc.)
         """
         if value is None:
-            self.__safe_opts.pop(option, None)
+            self.__write_concern.pop(option, None)
         else:
-            if check:
-                option, value = validate(option, value)
-            self.__safe_opts[option] = value
-            self.__safe = True
+            self.__write_concern[option] = value
+            if option != "w" or value != 0:
+                self.__safe = True
 
     def __set_options(self, options):
         """Validates and sets all options passed to this object."""
@@ -242,7 +266,7 @@ class BaseObject(object):
             elif option == 'tag_sets':
                 self.__tag_sets = validate_tag_sets(option, value)
             elif option in (
-                'secondaryAcceptableLatencyMS',
+                'secondaryacceptablelatencyms',
                 'secondary_acceptable_latency_ms'
             ):
                 self.__secondary_acceptable_latency_ms = \
@@ -255,8 +279,69 @@ class BaseObject(object):
                 else:
                     self.__set_safe_option(option, value)
 
+    def __set_write_concern(self, value):
+        """Property setter for write_concern."""
+        if not isinstance(value, dict):
+            raise ConfigurationError("write_concern must be an "
+                                     "instance of dict or a subclass.")
+        # Make a copy here to avoid users accidentally setting the
+        # same dict on multiple instances.
+        wc = WriteConcern()
+        for k, v in value.iteritems():
+            # Make sure we validate each option.
+            wc[k] = v
+        self.__write_concern = wc
+
+    def __get_write_concern(self):
+        """The default write concern for this instance.
+
+        Supports dict style access for getting/setting write concern
+        options. Valid options include:
+
+        - `w`: (integer or string) If this is a replica set, write operations
+          will block until they have been replicated to the specified number
+          or tagged set of servers. `w=<int>` always includes the replica set
+          primary (e.g. w=3 means write to the primary and wait until
+          replicated to **two** secondaries). **Setting w=0 disables write
+          acknowledgement and all other write concern options.**
+        - `wtimeout`: (integer) Used in conjunction with `w`. Specify a value
+          in milliseconds to control how long to wait for write propagation
+          to complete. If replication does not complete in the given
+          timeframe, a timeout exception is raised.
+        - `j`: If ``True`` block until write operations have been committed
+          to the journal. Ignored if the server is running without journaling.
+        - `fsync`: If ``True`` force the database to fsync all files before
+          returning. When used with `j` the server awaits the next group
+          commit before returning.
+
+        >>> m = pymongo.MongoClient()
+        >>> m.write_concern
+        {}
+        >>> m.write_concern = {'w': 2, 'wtimeout': 1000}
+        >>> m.write_concern
+        {'wtimeout': 1000, 'w': 2}
+        >>> m.write_concern['j'] = True
+        >>> m.write_concern
+        {'wtimeout': 1000, 'j': True, 'w': 2}
+        >>> m.write_concern = {'j': True}
+        >>> m.write_concern
+        {'j': True}
+        >>> # Disable write acknowledgement and write concern
+        ...
+        >>> m.write_concern['w'] = 0
+
+
+        .. note:: Accessing :attr:`write_concern` returns its value
+           (a subclass of :class:`dict`), not a copy.
+        """
+        # To support dict style access we have to return the actual
+        # WriteConcern here, not a copy.
+        return self.__write_concern
+
+    write_concern = property(__get_write_concern, __set_write_concern)
+
     def __get_slave_okay(self):
-        """DEPRECATED. Use `read_preference` instead.
+        """DEPRECATED. Use :attr:`read_preference` instead.
 
         .. versionchanged:: 2.1
            Deprecated slave_okay.
@@ -329,7 +414,9 @@ class BaseObject(object):
     tag_sets = property(__get_tag_sets, __set_tag_sets)
 
     def __get_safe(self):
-        """Use getlasterror with every write operation?
+        """**DEPRECATED:** Use the 'w' :attr:`write_concern` option instead.
+
+        Use getlasterror with every write operation?
 
         .. versionadded:: 2.0
         """
@@ -337,35 +424,51 @@ class BaseObject(object):
 
     def __set_safe(self, value):
         """Property setter for safe"""
+        warnings.warn("safe is deprecated. Please use the"
+                      " 'w' write_concern option instead.",
+                      DeprecationWarning)
         self.__safe = validate_boolean('safe', value)
 
     safe = property(__get_safe, __set_safe)
 
     def get_lasterror_options(self):
-        """Returns a dict of the getlasterror options set
-        on this instance.
+        """DEPRECATED: Use :attr:`write_concern` instead.
 
+        Returns a dict of the getlasterror options set on this instance.
+
+        .. versionchanged:: 2.4
+           Deprecated get_lasterror_options.
         .. versionadded:: 2.0
         """
-        return self.__safe_opts.copy()
+        warnings.warn("get_lasterror_options is deprecated. Please use "
+                      "write_concern instead.", DeprecationWarning)
+        return self.__write_concern.copy()
 
     def set_lasterror_options(self, **kwargs):
-        """Set getlasterror options for this instance.
+        """DEPRECATED: Use :attr:`write_concern` instead.
 
-        Valid options include j=<bool>, w=<int>, wtimeout=<int>,
+        Set getlasterror options for this instance.
+
+        Valid options include j=<bool>, w=<int/string>, wtimeout=<int>,
         and fsync=<bool>. Implies safe=True.
 
         :Parameters:
             - `**kwargs`: Options should be passed as keyword
                           arguments (e.g. w=2, fsync=True)
 
+        .. versionchanged:: 2.4
+           Deprecated set_lasterror_options.
         .. versionadded:: 2.0
         """
+        warnings.warn("set_lasterror_options is deprecated. Please use "
+                      "write_concern instead.", DeprecationWarning)
         for key, value in kwargs.iteritems():
-            self.__set_safe_option(key, value, check=True)
+            self.__set_safe_option(key, value)
 
     def unset_lasterror_options(self, *options):
-        """Unset getlasterror options for this instance.
+        """DEPRECATED: Use :attr:`write_concern` instead.
+
+        Unset getlasterror options for this instance.
 
         If no options are passed unsets all getlasterror options.
         This does not set `safe` to False.
@@ -373,32 +476,73 @@ class BaseObject(object):
         :Parameters:
             - `*options`: The list of options to unset.
 
+        .. versionchanged:: 2.4
+           Deprecated unset_lasterror_options.
         .. versionadded:: 2.0
         """
+        warnings.warn("unset_lasterror_options is deprecated. Please use "
+                      "write_concern instead.", DeprecationWarning)
         if len(options):
             for option in options:
-                self.__safe_opts.pop(option, None)
+                self.__write_concern.pop(option, None)
         else:
-            self.__safe_opts = {}
+            self.__write_concern = WriteConcern()
 
-    def _get_safe_and_lasterror_options(self, safe=None, **options):
-        """Get the current safe mode and any getLastError options.
+    def _get_wc_override(self):
+        """Get write concern override.
+
+        Used in internal methods that **must** do acknowledged write ops.
+        We don't want to override user write concern options if write concern
+        is already enabled.
+        """
+        if self.safe and self.__write_concern.get('w') != 0:
+            return {}
+        return {'w': 1}
+
+    def _get_write_mode(self, safe=None, **options):
+        """Get the current write mode.
 
         Determines if the current write is safe or not based on the
-        passed in or inherited safe value.  Passing any write concerns
-        automatically sets safe to True.
+        passed in or inherited safe value, write_concern values, or
+        passed options.
 
         :Parameters:
             - `safe`: check that the operation succeeded?
-            - `**options`: overriding getLastError options
+            - `**options`: overriding write concern options.
 
         .. versionadded:: 2.3
         """
-        if safe is None:
-            safe = self.safe
-        safe = validate_boolean('safe', safe)
-        if safe or options:
-            safe = True
-            if not options:
-                options.update(self.get_lasterror_options())
-        return safe, options
+        # Don't ever send w=1 to the server.
+        def pop1(dct):
+            if dct.get('w') == 1:
+                dct.pop('w')
+            return dct
+
+        if safe is not None:
+            warnings.warn("The safe parameter is deprecated. Please use "
+                          "write concern options instead.", DeprecationWarning)
+            validate_boolean('safe', safe)
+
+        # Passed options override collection level defaults.
+        if safe is not None or options:
+            if safe or options:
+                if not options:
+                    options = self.__write_concern.copy()
+                    # Backwards compatability edge case. Call getLastError
+                    # with no options if safe=True was passed but collection
+                    # level defaults have been disabled with w=0.
+                    # These should be equivalent:
+                    # Connection(w=0).foo.bar.insert({}, safe=True)
+                    # MongoClient(w=0).foo.bar.insert({}, w=1)
+                    if options.get('w') == 0:
+                        return True, {}
+                # Passing w=0 overrides passing safe=True.
+                return options.get('w') != 0, pop1(options)
+            return False, {}
+
+        # Fall back to collection level defaults.
+        # w=0 takes precedence over self.safe = True
+        if self.safe and self.__write_concern.get('w') != 0:
+            return True, pop1(self.__write_concern.copy())
+
+        return False, {}

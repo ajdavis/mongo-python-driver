@@ -48,7 +48,7 @@ SLOW_ONLY = 1
 ALL = 2
 """Profile all operations."""
 
-version_tuple = (2, 3, '+')
+version_tuple = (2, 4, 1, '+')
 
 def get_version_string():
     if isinstance(version_tuple[-1], basestring):
@@ -59,6 +59,8 @@ version = get_version_string()
 """Current version of PyMongo."""
 
 from pymongo.connection import Connection
+from pymongo.mongo_client import MongoClient
+from pymongo.mongo_replica_set_client import MongoReplicaSetClient
 from pymongo.replica_set_connection import ReplicaSetConnection
 from pymongo.read_preferences import ReadPreference
 

@@ -62,7 +62,8 @@ def _create_property(field_name, docstring,
     def setter(self, value):
         if self._closed:
             self._coll.files.update({"_id": self._file["_id"]},
-                                    {"$set": {field_name: value}}, safe=True)
+                                    {"$set": {field_name: value}},
+                                    **self._coll._get_wc_override())
         self._file[field_name] = value
 
     if read_only:
@@ -113,6 +114,26 @@ class GridIn(object):
             converted to a :class:`str`. In Python 3, any :class:`str`
             that is written to the file will be converted to
             :class:`bytes`.
+
+        If you turn off write-acknowledgment for performance reasons, it is
+        critical to wrap calls to :meth:`write` and :meth:`close` within a
+        single request:
+
+           >>> from pymongo import MongoClient
+           >>> from gridfs import GridFS
+           >>> client = MongoClient(w=0) # turn off write acknowledgment
+           >>> fs = GridFS(client)
+           >>> gridin = fs.new_file()
+           >>> request = client.start_request()
+           >>> try:
+           ...     for i in range(10):
+           ...         gridin.write('foo')
+           ...     gridin.close()
+           ... finally:
+           ...     request.end()
+
+        In Python 2.5 and later this code can be simplified with a
+        with-statement, see :doc:`/examples/requests` for more information.
 
         :Parameters:
           - `root_collection`: root collection to write to
@@ -182,7 +203,8 @@ class GridIn(object):
             self._file[name] = value
             if self._closed:
                 self._coll.files.update({"_id": self._file["_id"]},
-                                        {"$set": {name: value}}, safe=True)
+                                        {"$set": {name: value}},
+                                        **self._coll._get_wc_override())
 
     def __flush_data(self, data):
         """Flush `data` to a chunk.
@@ -209,17 +231,27 @@ class GridIn(object):
     def __flush(self):
         """Flush the file to the database.
         """
-        self.__flush_buffer()
-
-        md5 = self._coll.database.command("filemd5", self._id,
-                                          root=self._coll.name)["md5"]
-
-        self._file["md5"] = md5
-        self._file["length"] = self._position
-        self._file["uploadDate"] = datetime.datetime.utcnow()
-
         try:
-            return self._coll.files.insert(self._file, safe=True)
+            self.__flush_buffer()
+
+            db = self._coll.database
+
+            # See PYTHON-417, "Sharded GridFS fails with exception: chunks out
+            # of order." Inserts via mongos, even if they use a single
+            # connection, can succeed out-of-order due to the writebackListener.
+            # We mustn't call "filemd5" until all inserts are complete, which
+            # we ensure by calling getLastError (and ignoring the result).
+            db.error()
+
+            md5 = db.command(
+                "filemd5", self._id, root=self._coll.name)["md5"]
+
+            self._file["md5"] = md5
+            self._file["length"] = self._position
+            self._file["uploadDate"] = datetime.datetime.utcnow()
+
+            return self._coll.files.insert(self._file,
+                                           **self._coll._get_wc_override())
         except DuplicateKeyError:
             raise FileExists("file with _id %r already exists" % self._id)
 

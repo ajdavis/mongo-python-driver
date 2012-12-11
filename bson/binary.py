@@ -18,7 +18,7 @@ except ImportError:
     # Python2.4 doesn't have a uuid module.
     pass
 
-from bson.py3compat import binary_type
+from bson.py3compat import PY3, binary_type
 
 """Tools for representing BSON binary data.
 """
@@ -145,9 +145,17 @@ class Binary(binary_type):
         """
         return self.__subtype
 
+    def __getnewargs__(self):
+        # Work around http://bugs.python.org/issue7382
+        data = super(Binary, self).__getnewargs__()[0]
+        if PY3 and not isinstance(data, binary_type):
+            data = data.encode('latin-1')
+        return data, self.__subtype
+
     def __eq__(self, other):
         if isinstance(other, Binary):
-            return (self.__subtype, binary_type(self)) == (other.subtype, binary_type(other))
+            return ((self.__subtype, binary_type(self)) ==
+                    (other.subtype, binary_type(other)))
         # We don't return NotImplemented here because if we did then
         # Binary("foo") == "foo" would return True, since Binary is a
         # subclass of str...
@@ -206,6 +214,10 @@ class UUIDLegacy(Binary):
         self = Binary.__new__(cls, binary_type(obj.bytes), OLD_UUID_SUBTYPE)
         self.__uuid = obj
         return self
+
+    def __getnewargs__(self):
+        # Support copy and deepcopy
+        return (self.__uuid,)
 
     @property
     def uuid(self):

@@ -40,8 +40,7 @@ Dependencies
 
 The PyMongo distribution is supported and tested on Python 2.x (where
 x >= 4) and Python 3.x (where x >= 1). PyMongo versions <= 1.3 also
-supported Python 2.3, but that is no longer supported. If you need to
-use Python 2.3 please contact us.
+supported Python 2.3, but that is no longer supported.
 
 Additional dependencies are:
 
@@ -53,12 +52,12 @@ Examples
 Here's a basic example (for more see the *examples* section of the docs):
 
 >>> import pymongo
->>> connection = pymongo.Connection("localhost", 27017)
+>>> connection = pymongo.MongoClient("localhost", 27017)
 >>> db = connection.test
 >>> db.name
 u'test'
 >>> db.my_collection
-Collection(Database(Connection('localhost', 27017), u'test'), u'my_collection')
+Collection(Database(MongoClient('localhost', 27017), u'test'), u'my_collection')
 >>> db.my_collection.save({"x": 10})
 ObjectId('4aba15ebe23f6b53b0000000')
 >>> db.my_collection.save({"x": 8})

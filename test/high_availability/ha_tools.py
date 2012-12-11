@@ -26,6 +26,7 @@ import time
 from stat import S_IRUSR
 
 import pymongo
+import pymongo.errors
 
 home = os.environ.get('HOME')
 default_dbpath = os.path.join(home, 'data', 'pymongo_high_availability')
@@ -153,7 +154,7 @@ def start_replica_set(members, auth=False, fresh=True):
                 len(get_secondaries()) == expected_secondaries and
                 len(get_arbiters()) == expected_arbiters):
                 break
-        except pymongo.errors.AutoReconnect:
+        except pymongo.errors.ConnectionFailure:
             # Keep waiting
             pass
     else:
@@ -266,7 +267,7 @@ def get_primary():
         assert len(primaries) <= 1
         if primaries:
             return primaries[0]
-    except pymongo.errors.AutoReconnect:
+    except pymongo.errors.ConnectionFailure:
         pass
 
     return None

@@ -13,10 +13,12 @@
 # limitations under the License.
 
 """Test the cursor module."""
-import unittest
-import random
-import sys
+import copy
 import itertools
+import random
+import re
+import sys
+import unittest
 sys.path[0:0] = [""]
 
 from nose.plugins.skip import SkipTest
@@ -27,8 +29,8 @@ from pymongo import (ASCENDING,
 from pymongo.database import Database
 from pymongo.errors import (InvalidOperation,
                             OperationFailure)
-from test.test_connection import get_connection
 from test import version
+from test.test_connection import get_connection
 
 
 class TestCursor(unittest.TestCase):
@@ -463,7 +465,8 @@ class TestCursor(unittest.TestCase):
         self.assertEqual(type(MyClass()), type(cursor[0]))
 
         # Just test attributes
-        cursor = self.db.test.find(skip=1,
+        cursor = self.db.test.find({"x": re.compile("^hello.*")},
+                                   skip=1,
                                    timeout=False,
                                    snapshot=True,
                                    tailable=True,
@@ -471,7 +474,8 @@ class TestCursor(unittest.TestCase):
                                    slave_okay=True,
                                    await_data=True,
                                    partial=True,
-                                   manipulate=False).limit(2)
+                                   manipulate=False,
+                                   fields={'_id': False}).limit(2)
         cursor.add_option(64)
 
         cursor2 = cursor.clone()
@@ -491,6 +495,33 @@ class TestCursor(unittest.TestCase):
                          cursor2._Cursor__manipulate)
         self.assertEqual(cursor._Cursor__query_flags,
                          cursor2._Cursor__query_flags)
+
+        # Shallow copies can so can mutate
+        cursor2 = copy.copy(cursor)
+        cursor2._Cursor__fields['cursor2'] = False
+        self.assertTrue('cursor2' in cursor._Cursor__fields)
+
+        # Deepcopies and shouldn't mutate
+        cursor3 = copy.deepcopy(cursor)
+        cursor3._Cursor__fields['cursor3'] = False
+        self.assertFalse('cursor3' in cursor._Cursor__fields)
+
+        cursor4 = cursor.clone()
+        cursor4._Cursor__fields['cursor4'] = False
+        self.assertFalse('cursor4' in cursor._Cursor__fields)
+
+        # Test memo when deepcopying queries
+        query = {"hello": "world"}
+        query["reflexive"] = query
+        cursor = self.db.test.find(query)
+
+        cursor2 = copy.deepcopy(cursor)
+
+        self.assertNotEqual(id(cursor._Cursor__spec),
+                            id(cursor2._Cursor__spec))
+        self.assertEqual(id(cursor2._Cursor__spec['reflexive']),
+                         id(cursor2._Cursor__spec))
+        self.assertEqual(len(cursor2._Cursor__spec), 2)
 
     def test_add_remove_option(self):
         cursor = self.db.test.find()
@@ -685,21 +716,21 @@ class TestCursor(unittest.TestCase):
 
         cursor = db.test.find(tailable=True)
 
-        db.test.insert({"x": 1})
+        db.test.insert({"x": 1}, safe=True)
         count = 0
         for doc in cursor:
             count += 1
             self.assertEqual(1, doc["x"])
         self.assertEqual(1, count)
 
-        db.test.insert({"x": 2})
+        db.test.insert({"x": 2}, safe=True)
         count = 0
         for doc in cursor:
             count += 1
             self.assertEqual(2, doc["x"])
         self.assertEqual(1, count)
 
-        db.test.insert({"x": 3})
+        db.test.insert({"x": 3}, safe=True)
         count = 0
         for doc in cursor:
             count += 1

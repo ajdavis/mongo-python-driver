@@ -18,11 +18,15 @@ import random
 import sys
 import unittest
 
+from nose.plugins.skip import SkipTest
+
 sys.path[0:0] = [""]
 
 from bson.son import SON
+from pymongo.cursor import _QUERY_OPTIONS
 from pymongo.replica_set_connection import ReplicaSetConnection
-from pymongo.read_preferences import ReadPreference, modes, MovingAverage
+from pymongo.read_preferences import (ReadPreference, modes, MovingAverage,
+                                      secondary_ok_commands)
 from pymongo.errors import ConfigurationError
 
 from test.test_replica_set_connection import TestConnectionReplicaSetBase
@@ -73,6 +77,58 @@ class TestReadPreferencesBase(TestConnectionReplicaSetBase):
 
 
 class TestReadPreferences(TestReadPreferencesBase):
+    def test_mode_validation(self):
+        # 'modes' are imported from read_preferences.py
+        for mode in modes:
+            self.assertEqual(mode, self._get_connection(
+                read_preference=mode).read_preference)
+
+        self.assertRaises(ConfigurationError, self._get_connection,
+            read_preference='foo')
+
+    def test_tag_sets_validation(self):
+        # Can't use tags with PRIMARY
+        self.assertRaises(ConfigurationError, self._get_connection,
+            tag_sets=[{'k': 'v'}])
+
+        # ... but empty tag sets are ok with PRIMARY
+        self.assertEqual([{}], self._get_connection(tag_sets=[{}]).tag_sets)
+
+        S = ReadPreference.SECONDARY
+        self.assertEqual([{}], self._get_connection(read_preference=S).tag_sets)
+
+        self.assertEqual([{'k': 'v'}], self._get_connection(
+            read_preference=S, tag_sets=[{'k': 'v'}]).tag_sets)
+
+        self.assertEqual([{'k': 'v'}, {}], self._get_connection(
+            read_preference=S, tag_sets=[{'k': 'v'}, {}]).tag_sets)
+
+        self.assertRaises(ConfigurationError, self._get_connection,
+            read_preference=S, tag_sets=[])
+
+        # One dict not ok, must be a list of dicts
+        self.assertRaises(ConfigurationError, self._get_connection,
+            read_preference=S, tag_sets={'k': 'v'})
+
+        self.assertRaises(ConfigurationError, self._get_connection,
+            read_preference=S, tag_sets='foo')
+
+        self.assertRaises(ConfigurationError, self._get_connection,
+            read_preference=S, tag_sets=['foo'])
+
+    def test_latency_validation(self):
+        self.assertEqual(17, self._get_connection(
+            secondary_acceptable_latency_ms=17
+        ).secondary_acceptable_latency_ms)
+
+        self.assertEqual(42, self._get_connection(
+            secondaryAcceptableLatencyMS=42
+        ).secondary_acceptable_latency_ms)
+
+        self.assertEqual(666, self._get_connection(
+            secondaryacceptablelatencyms=666
+        ).secondary_acceptable_latency_ms)
+
     def test_primary(self):
         self.assertReadsFrom('primary',
             read_preference=ReadPreference.PRIMARY)
@@ -93,7 +149,7 @@ class TestReadPreferences(TestReadPreferencesBase):
     def test_secondary_preferred(self):
         self.assertReadsFrom('secondary',
             read_preference=ReadPreference.SECONDARY_PREFERRED)
-        
+
     def test_secondary_only(self):
         # Test deprecated mode SECONDARY_ONLY, which is now a synonym for
         # SECONDARY
@@ -105,19 +161,30 @@ class TestReadPreferences(TestReadPreferencesBase):
         # member
         c = self._get_connection(
             read_preference=ReadPreference.NEAREST,
-            secondaryAcceptableLatencyMS=1500,
+            secondaryAcceptableLatencyMS=10000, # 10 seconds
             auto_start_request=False)
 
+        data_members = set(self.hosts).difference(set(self.arbiters))
+
+        # This is a probabilistic test; track which members we've read from so
+        # far, and keep reading until we've used all the members or give up.
+        # Chance of using only 2 of 3 members 10k times if there's no bug =
+        # 3 * (2/3)**10000, very low.
         used = set()
-        for i in range(1000):
+        i = 0
+        while data_members.difference(used) and i < 10000:
             host = self.read_from_which_host(c)
             used.add(host)
+            i += 1
 
-        data_members = set(self.hosts).difference(set(self.arbiters))
         not_used = data_members.difference(used)
+        latencies = ', '.join(
+            '%s: %dms' % (member.host, member.ping_time.get())
+            for member in c._MongoReplicaSetClient__members.values())
+
         self.assertFalse(not_used,
             "Expected to use primary and all secondaries for mode NEAREST,"
-            " but didn't use %s" % not_used)
+            " but didn't use %s\nlatencies: %s" % (not_used, latencies))
 
 
 class ReadPrefTester(ReplicaSetConnection):
@@ -125,17 +192,17 @@ class ReadPrefTester(ReplicaSetConnection):
         self.has_read_from = set()
         super(ReadPrefTester, self).__init__(*args, **kwargs)
 
-    def _ReplicaSetConnection__send_and_receive(self, member, *args, **kwargs):
+    def _MongoReplicaSetClient__send_and_receive(self, member, *args, **kwargs):
         self.has_read_from.add(member)
         rsc = super(ReadPrefTester, self)
-        return rsc._ReplicaSetConnection__send_and_receive(
+        return rsc._MongoReplicaSetClient__send_and_receive(
             member, *args, **kwargs)
 
 
 class TestCommandAndReadPreference(TestConnectionReplicaSetBase):
     def setUp(self):
         super(TestCommandAndReadPreference, self).setUp()
-        
+
         # Need auto_start_request False to avoid pinning members.
         self.c = ReadPrefTester(
             '%s:%s' % (host, port),
@@ -262,7 +329,7 @@ class TestCommandAndReadPreference(TestConnectionReplicaSetBase):
         self._test_fn(True, lambda: self.c.pymongo_test.command(
             'geoSearch', 'test', near=[33, 33], maxDistance=6,
             search={'type': 'restaurant' }, limit=30))
-        
+
         self._test_fn(True, lambda: self.c.pymongo_test.command(SON([
             ('geoSearch', 'test'), ('near', [33, 33]), ('maxDistance', 6),
             ('search', {'type': 'restaurant'}), ('limit', 30)])))
@@ -414,35 +481,68 @@ class TestMongosConnection(unittest.TestCase):
         # Test default mode, PRIMARY
         cursor = c.pymongo_test.test.find()
         if is_mongos:
+            # We only set $readPreference if it's something other than
+            # PRIMARY to avoid problems with mongos versions that don't
+            # support read preferences.
             self.assertEqual(
-                {'mode': 'primary'},
+                None,
                 cursor._Cursor__query_spec().get('$readPreference')
             )
         else:
             self.assertFalse(
                 '$readPreference' in cursor._Cursor__query_spec())
 
+        # Copy these constants for brevity
+        PRIMARY_PREFERRED = ReadPreference.PRIMARY_PREFERRED
+        SECONDARY = ReadPreference.SECONDARY
+        SECONDARY_PREFERRED = ReadPreference.SECONDARY_PREFERRED
+        NEAREST = ReadPreference.NEAREST
+        SLAVE_OKAY = _QUERY_OPTIONS['slave_okay']
+
         # Test non-PRIMARY modes which can be combined with tags
-        for mode, mongos_mode in (
-            (ReadPreference.PRIMARY_PREFERRED, 'primaryPreferred'),
-            (ReadPreference.SECONDARY, 'secondary'),
-            (ReadPreference.SECONDARY_PREFERRED, 'secondaryPreferred'),
-            (ReadPreference.NEAREST, 'nearest'),
+        for kwarg, value, mongos_mode in (
+            ('read_preference', PRIMARY_PREFERRED, 'primaryPreferred'),
+            ('read_preference', SECONDARY, 'secondary'),
+            ('read_preference', SECONDARY_PREFERRED, 'secondaryPreferred'),
+            ('read_preference', NEAREST, 'nearest'),
+            ('slave_okay', True, 'secondaryPreferred'),
+            ('slave_okay', False, 'primary')
         ):
             for tag_sets in (
                 None, [{}]
             ):
-                c = get_connection(
-                    read_preference=mode,
-                    tag_sets=tag_sets)
+                # Create a connection e.g. with read_preference=NEAREST or
+                # slave_okay=True
+                c = get_connection(tag_sets=tag_sets, **{kwarg: value})
 
                 self.assertEqual(is_mongos, c.is_mongos)
                 cursor = c.pymongo_test.test.find()
                 if is_mongos:
-                    self.assertEqual(
-                        {'mode': mongos_mode},
-                        cursor._Cursor__query_spec().get('$readPreference')
-                    )
+                    # We don't set $readPreference for SECONDARY_PREFERRED
+                    # unless tags are in use. slaveOkay has the same effect.
+                    if mongos_mode == 'secondaryPreferred':
+                        self.assertEqual(
+                            None,
+                            cursor._Cursor__query_spec().get('$readPreference'))
+
+                        self.assertTrue(
+                            cursor._Cursor__query_options() & SLAVE_OKAY)
+
+                    # Don't send $readPreference for PRIMARY either
+                    elif mongos_mode == 'primary':
+                        self.assertEqual(
+                            None,
+                            cursor._Cursor__query_spec().get('$readPreference'))
+
+                        self.assertFalse(
+                            cursor._Cursor__query_options() & SLAVE_OKAY)
+                    else:
+                        self.assertEqual(
+                            {'mode': mongos_mode},
+                            cursor._Cursor__query_spec().get('$readPreference'))
+
+                        self.assertTrue(
+                            cursor._Cursor__query_options() & SLAVE_OKAY)
                 else:
                     self.assertFalse(
                         '$readPreference' in cursor._Cursor__query_spec())
@@ -452,9 +552,16 @@ class TestMongosConnection(unittest.TestCase):
                 [{'dc': 'la'}, {'dc': 'sf'}],
                 [{'dc': 'la'}, {'dc': 'sf'}, {}],
             ):
-                c = get_connection(
-                    read_preference=mode,
-                    tag_sets=tag_sets)
+                if kwarg == 'slave_okay':
+                    # Can't use tags with slave_okay True or False, need a
+                    # real read preference
+                    self.assertRaises(
+                        ConfigurationError,
+                        get_connection, tag_sets=tag_sets, **{kwarg: value})
+
+                    continue
+
+                c = get_connection(tag_sets=tag_sets, **{kwarg: value})
 
                 self.assertEqual(is_mongos, c.is_mongos)
                 cursor = c.pymongo_test.test.find()
@@ -466,6 +573,41 @@ class TestMongosConnection(unittest.TestCase):
                     self.assertFalse(
                         '$readPreference' in cursor._Cursor__query_spec())
 
+    def test_only_secondary_ok_commands_have_read_prefs(self):
+        c = get_connection(read_preference=ReadPreference.SECONDARY)
+        is_mongos = utils.is_mongos(c)
+        if not is_mongos:
+            raise SkipTest("Only mongos have read_prefs added to the spec")
+
+        # Ensure secondary_ok_commands have readPreference
+        for cmd in secondary_ok_commands:
+            if cmd == 'mapreduce':  # map reduce is a special case
+                continue
+            command = SON([(cmd, 1)])
+            cursor = c.pymongo_test["$cmd"].find(command.copy())
+            # White-listed commands also have to be wrapped in $query
+            command = SON([('$query', command)])
+            command['$readPreference'] = {'mode': 'secondary'}
+            self.assertEqual(command, cursor._Cursor__query_spec())
+
+        # map_reduce inline should have read prefs
+        command = SON([('mapreduce', 'test'), ('out', {'inline': 1})])
+        cursor = c.pymongo_test["$cmd"].find(command.copy())
+        # White-listed commands also have to be wrapped in $query
+        command = SON([('$query', command)])
+        command['$readPreference'] = {'mode': 'secondary'}
+        self.assertEqual(command, cursor._Cursor__query_spec())
+
+        # map_reduce that outputs to a collection shouldn't have read prefs
+        command = SON([('mapreduce', 'test'), ('out', {'mrtest': 1})])
+        cursor = c.pymongo_test["$cmd"].find(command.copy())
+        self.assertEqual(command, cursor._Cursor__query_spec())
+
+        # Other commands shouldn't be changed
+        for cmd in ('drop', 'create', 'any-future-cmd'):
+            command = SON([(cmd, 1)])
+            cursor = c.pymongo_test["$cmd"].find(command.copy())
+            self.assertEqual(command, cursor._Cursor__query_spec())
 
 if __name__ == "__main__":
     unittest.main()

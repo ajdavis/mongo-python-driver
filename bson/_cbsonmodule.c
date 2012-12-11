@@ -548,7 +548,6 @@ static int _write_element_to_buffer(PyObject* self, buffer_t buffer, int type_by
 
         if (!PyDict_Size(scope)) {
             Py_DECREF(scope);
-
             *(buffer_get_buffer(buffer) + type_byte) = 0x0D;
             return write_string(buffer, value);
         }
@@ -560,10 +559,12 @@ static int _write_element_to_buffer(PyObject* self, buffer_t buffer, int type_by
         length_location = buffer_save_space(buffer, 4);
         if (length_location == -1) {
             PyErr_NoMemory();
+            Py_DECREF(scope);
             return 0;
         }
 
         if (!write_string(buffer, value)) {
+            Py_DECREF(scope);
             return 0;
         }
 
@@ -758,12 +759,14 @@ static int _write_element_to_buffer(PyObject* self, buffer_t buffer, int type_by
             PyErr_SetString(InvalidStringData,
                             "regex patterns must be valid UTF-8");
             Py_DECREF(InvalidStringData);
+            Py_DECREF(encoded_pattern);
             return 0;
         } else if (status == HAS_NULL) {
             PyObject* InvalidDocument = _error("InvalidDocument");
             PyErr_SetString(InvalidDocument,
                             "regex patterns must not contain the NULL byte");
             Py_DECREF(InvalidDocument);
+            Py_DECREF(encoded_pattern);
             return 0;
         }
 
@@ -1221,6 +1224,7 @@ static PyObject* get_value(PyObject* self, const char* buffer, int* position,
                 to_append = get_value(self, buffer, position, type,
                                       max - key_size, as_class, tz_aware, uuid_subtype);
                 if (!to_append) {
+                    Py_DECREF(value);
                     return NULL;
                 }
                 PyList_Append(value, to_append);
@@ -1421,6 +1425,7 @@ static PyObject* get_value(PyObject* self, const char* buffer, int* position,
             *position += pattern_length + 1;
             flags_length = strlen(buffer + *position);
             if (max < pattern_length + flags_length) {
+                Py_DECREF(pattern);
                 goto invalid;
             }
             flags = 0;
@@ -1461,6 +1466,7 @@ static PyObject* get_value(PyObject* self, const char* buffer, int* position,
             }
             *position += collection_length + 1;
             if (max < collection_length + 12) {
+                Py_DECREF(collection);
                 goto invalid;
             }
             id = PyObject_CallFunction(state->ObjectId, "s#", buffer + *position, 12);
@@ -1615,16 +1621,20 @@ static PyObject* elements_to_dict(PyObject* self, const char* string, int max,
             PyObject* InvalidBSON = _error("InvalidBSON");
             PyErr_SetNone(InvalidBSON);
             Py_DECREF(InvalidBSON);
+            Py_DECREF(dict);
             return NULL;
         }
         name = PyUnicode_DecodeUTF8(string + position, name_length, "strict");
         if (!name) {
+            Py_DECREF(dict);
             return NULL;
         }
         position += name_length + 1;
         value = get_value(self, string, &position, type,
                           max - position, as_class, tz_aware, uuid_subtype);
         if (!value) {
+            Py_DECREF(name);
+            Py_DECREF(dict);
             return NULL;
         }
 
@@ -1761,6 +1771,7 @@ static PyObject* _cbson_decode_all(PyObject* self, PyObject* args) {
             PyErr_SetString(InvalidBSON,
                             "not enough data for a BSON document");
             Py_DECREF(InvalidBSON);
+            Py_DECREF(result);
             return NULL;
         }
 
@@ -1771,6 +1782,7 @@ static PyObject* _cbson_decode_all(PyObject* self, PyObject* args) {
             PyErr_SetString(InvalidBSON,
                             "objsize too large");
             Py_DECREF(InvalidBSON);
+            Py_DECREF(result);
             return NULL;
         }
 
@@ -1779,12 +1791,14 @@ static PyObject* _cbson_decode_all(PyObject* self, PyObject* args) {
             PyErr_SetString(InvalidBSON,
                             "bad eoo");
             Py_DECREF(InvalidBSON);
+            Py_DECREF(result);
             return NULL;
         }
 
         dict = elements_to_dict(self, string + 4, size - 5,
                                 as_class, tz_aware, uuid_subtype);
         if (!dict) {
+            Py_DECREF(result);
             return NULL;
         }
         PyList_Append(result, dict);

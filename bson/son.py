@@ -193,10 +193,15 @@ class SON(dict):
             return default
 
     def __eq__(self, other):
+        """Comparison to another SON is order-sensitive while comparison to a
+        regular dictionary is order-insensitive.
+        """
         if isinstance(other, SON):
-            return (len(self) == len(other) and
-                    dict(self.items()) == dict(other.items()))
-        return dict(self.items()) == other
+            return len(self) == len(other) and self.items() == other.items()
+        return self.to_dict() == other
+
+    def __ne__(self, other):
+        return not self == other
 
     def __len__(self):
         return len(self.keys())
