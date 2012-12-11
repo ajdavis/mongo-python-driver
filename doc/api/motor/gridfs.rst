@@ -5,6 +5,8 @@ Motor GridFS Classes
 
 Store blobs of data in `GridFS <http://www.mongodb.org/display/DOCS/GridFS>`_.
 
+.. seealso:: :ref:`gridfs-handler`
+
 .. TODO: doc all the differences, link from differences.rst
 
 .. autoclass:: MotorGridFS
