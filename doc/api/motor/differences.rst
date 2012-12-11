@@ -267,6 +267,18 @@ a single-threaded Tornado application. See Tornado's documentation on
 Minor differences
 =================
 
+MasterSlaveConnection
+---------------------
+
+PyMongo's :class:`~pymongo.master_slave_connection.MasterSlaveConnection`
+offers a few conveniences when connected to a MongoDB `master-slave pair`_.
+Master-slave replication has long been superseded by `replica sets`_, so Motor
+has no equivalent to MasterSlaveConnection.
+
+.. _master-slave pair: http://docs.mongodb.org/manual/administration/master-slave/
+
+.. _replica sets: http://docs.mongodb.org/manual/core/replication/
+
 Tailable cursors
 ----------------
 
