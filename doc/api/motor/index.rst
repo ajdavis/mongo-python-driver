@@ -10,6 +10,7 @@ MongoDB.
 .. toctree::
 
    differences
+   features
    prerequisites
    motor_installation
    tutorial
