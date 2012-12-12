@@ -36,8 +36,8 @@ class MotorNoSSLTest(unittest.TestCase):
             )
 
         for cx_class in (
-            motor.MotorConnection,
-            motor.MotorReplicaSetConnection
+            motor.MotorClient,
+            motor.MotorReplicaSetClient
         ):
             self.assertRaises(
                 ConfigurationError,
@@ -52,7 +52,7 @@ class MotorSSLTest(MotorTest):
         if not have_ssl:
             raise SkipTest("SSL not compiled into Python")
 
-        cx = yield motor.Op(motor.MotorConnection(host, port, ssl=True).open)
+        cx = yield motor.Op(motor.MotorClient(host, port, ssl=True).open)
 
         # Make sure the connection works
         db = cx.motor_ssl_test

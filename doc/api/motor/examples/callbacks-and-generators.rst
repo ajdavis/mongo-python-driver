@@ -62,7 +62,7 @@ Here's an example of an application that can create and display short messages:
                 self.write('</ul>')
                 self.finish()
 
-    db = motor.MotorConnection().open_sync().test
+    db = motor.MotorClient().open_sync().test
 
     application = tornado.web.Application(
         [

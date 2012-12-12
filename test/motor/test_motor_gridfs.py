@@ -95,7 +95,7 @@ class MotorGridfsTest(MotorTest):
 
         @async_test_engine(io_loop=loop)
         def test(self, done):
-            cx = motor.MotorConnection(host, port, io_loop=loop)
+            cx = motor.MotorClient(host, port, io_loop=loop)
             yield motor.Op(cx.open)
 
             fs = motor.MotorGridFS(cx.pymongo_test)
@@ -216,7 +216,7 @@ class MotorGridfsTest(MotorTest):
 class TestGridfsReplicaSet(MotorTest, TestConnectionReplicaSetBase):
     @async_test_engine()
     def test_gridfs_replica_set(self, done):
-        rsc = motor.MotorReplicaSetConnection(
+        rsc = motor.MotorReplicaSetClient(
             host=host, port=port,
             w=self.w, wtimeout=5000,
             read_preference=ReadPreference.SECONDARY,
@@ -236,14 +236,14 @@ class TestGridfsReplicaSet(MotorTest, TestConnectionReplicaSetBase):
     @async_test_engine()
     def test_gridfs_secondary(self, done):
         primary_host, primary_port = self.primary
-        primary_connection = motor.MotorConnection(
+        primary_connection = motor.MotorClient(
             primary_host, primary_port).open_sync()
 
         secondary_host, secondary_port = self.secondaries[0]
         for secondary_connection in [
-            motor.MotorConnection(
+            motor.MotorClient(
                 secondary_host, secondary_port, slave_okay=True).open_sync(),
-            motor.MotorConnection(secondary_host, secondary_port,
+            motor.MotorClient(secondary_host, secondary_port,
                 read_preference=ReadPreference.SECONDARY).open_sync(),
         ]:
             yield motor.Op(

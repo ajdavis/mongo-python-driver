@@ -208,10 +208,10 @@ class MotorTest(unittest.TestCase):
         return output.get('cursors', {}).get('totalOpen', 0)
 
     def motor_connection(self, host, port, *args, **kwargs):
-        """Get an open MotorConnection. Ignores self.ssl, you must pass 'ssl'
+        """Get an open MotorClient. Ignores self.ssl, you must pass 'ssl'
            argument.
         """
-        return motor.MotorConnection(host, port, *args, **kwargs).open_sync()
+        return motor.MotorClient(host, port, *args, **kwargs).open_sync()
 
     def check_callback_handling(self, fn, required):
         """
@@ -259,7 +259,7 @@ class MotorTest(unittest.TestCase):
 class MotorTestBasic(MotorTest):
     def test_repr(self):
         cx = self.motor_connection(host, port)
-        self.assertTrue(repr(cx).startswith('MotorConnection'))
+        self.assertTrue(repr(cx).startswith('MotorClient'))
         db = cx.pymongo_test
         self.assertTrue(repr(db).startswith('MotorDatabase'))
         coll = db.test_collection

@@ -59,7 +59,7 @@ class GridFSHandlerTestBase(AsyncHTTPTestCase):
         self.assertTrue(self.fs.get_last_version('foo'))
 
     def motor_db(self):
-        return motor.MotorConnection(
+        return motor.MotorClient(
             host, port, io_loop=self.io_loop).open_sync().pymongo_test
 
     def tearDown(self):

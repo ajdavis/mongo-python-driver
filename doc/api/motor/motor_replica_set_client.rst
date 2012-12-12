@@ -1,9 +1,9 @@
-:class:`MotorReplicaSetConnection` -- Connection to MongoDB replica set
+:class:`MotorReplicaSetClient` -- Connection to MongoDB replica set
 =======================================================================
 
 .. currentmodule:: motor
 
-.. autoclass:: motor.MotorReplicaSetConnection
+.. autoclass:: motor.MotorReplicaSetClient
 
   .. automethod:: open
   .. automethod:: open_sync
@@ -12,7 +12,7 @@
      Disconnect from MongoDB.
 
      Disconnecting will close all underlying sockets in the
-     connection pool. If the :class:`MotorReplicaSetConnection` is used again it
+     connection pool. If the :class:`MotorReplicaSetClient` is used again it
      will be automatically re-opened.
 
   .. method:: close
@@ -21,7 +21,7 @@
 
   .. describe:: c[db_name] || c.db_name
 
-     Get the `db_name` :class:`MotorDatabase` on :class:`MotorReplicaSetConnection` `c`.
+     Get the `db_name` :class:`MotorDatabase` on :class:`MotorReplicaSetClient` `c`.
 
      Raises :class:`~pymongo.errors.InvalidName` if an invalid database name is used.
      Raises :class:`~pymongo.errors.InvalidOperation` if connection isn't opened yet.
@@ -39,10 +39,10 @@
   .. automotorattribute:: document_class
   .. automotorattribute:: tz_aware
   .. automotorattribute:: safe
-  .. method:: sync_connection
+  .. method:: sync_client
 
-     Get a :class:`~pymongo.replica_set_connection.ReplicaSetConnection`
-     with the same configuration as this :class:`MotorReplicaSetConnection`
+     Get a :class:`~pymongo.mongo_replica_set_client.MongoReplicaSetClient`
+     with the same configuration as this :class:`MotorReplicaSetClient`
 
   .. automotormethod:: get_lasterror_options
   .. automotormethod:: set_lasterror_options

@@ -40,18 +40,18 @@ timeout interface::
 Configurable IOLoops
 ====================
 Motor supports Tornado applications with multiple IOLoops_. Pass the ``io_loop``
-argument to :class:`~motor.MotorConnection`
-or :class:`~motor.MotorReplicaSetConnection` to configure the loop for a
-connection instance.
+argument to :class:`~motor.MotorClient`
+or :class:`~motor.MotorReplicaSetClient` to configure the loop for a
+client instance.
 
 .. _IOLoops: http://www.tornadoweb.org/documentation/ioloop.html
 
 Opens Connections Synchronously or Asynchronously
 =================================================
-A :class:`~motor.MotorConnection` or :class:`~motor.MotorReplicaSetConnection`
-can be opened synchronously with :meth:`~motor.MotorConnection.open_sync`
+A :class:`~motor.MotorClient` or :class:`~motor.MotorReplicaSetClient`
+can be opened synchronously with :meth:`~motor.MotorClient.open_sync`
 before your application begins serving request, or can be opened
-asynchronously with :meth:`~motor.MotorConnection.open` to make the connection
+asynchronously with :meth:`~motor.MotorClient.open` to make the connection
 to MongoDB without blocking the Tornado IOLoop.
 
 Streams Static Files from GridFS

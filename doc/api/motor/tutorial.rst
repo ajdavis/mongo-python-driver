@@ -14,7 +14,7 @@ Motor Tutorial
   import tornado.web
   from tornado.ioloop import IOLoop
   from tornado import gen
-  db = motor.MotorConnection().open_sync().test_database
+  db = motor.MotorClient().open_sync().test_database
 
 .. testsetup:: after-inserting-2000-docs
 
@@ -23,14 +23,14 @@ Motor Tutorial
   import tornado.web
   from tornado.ioloop import IOLoop
   from tornado import gen
-  db = motor.MotorConnection().open_sync().test_database
-  pymongo.Connection().test_database.test_collection.insert(
+  db = motor.MotorClient().open_sync().test_database
+  pymongo.MongoClient().test_database.test_collection.insert(
       [{'i': i} for i in range(2000)], safe=True)
 
 .. testcleanup:: *
 
   import pymongo
-  pymongo.Connection().test_database.test_collection.remove(safe=True)
+  pymongo.MongoClient().test_database.test_collection.remove(safe=True)
 
 A guide to using **MongoDB** and **Tornado** with **Motor**, the
 non-blocking driver.
@@ -62,9 +62,9 @@ Object Hierarchy
 ----------------
 Motor, like PyMongo, represents data with a 4-level object hierarchy:
 
-* :class:`~motor.MotorConnection` / :class:`~motor.MotorReplicaSetConnection`:
+* :class:`~motor.MotorClient` / :class:`~motor.MotorReplicaSetClient`:
   represents a mongod process, or a cluster of them. You explicitly create one
-  of these connection objects, connect it to a running mongod or mongods, and
+  of these client objects, connect it to a running mongod or mongods, and
   use it for the lifetime of your application.
 * :class:`~motor.MotorDatabase`: Each mongod has a set of databases (distinct
   sets of data files on disk). You can get a reference to a database from a
@@ -77,24 +77,24 @@ Motor, like PyMongo, represents data with a 4-level object hierarchy:
 
 Making a Connection
 -------------------
-You typically create a single instance of either :class:`~motor.MotorConnection`
-or :class:`~motor.MotorReplicaSetConnection` at the time your application starts
+You typically create a single instance of either :class:`~motor.MotorClient`
+or :class:`~motor.MotorReplicaSetClient` at the time your application starts
 up. (See :ref:`high-availability-and-pymongo` for an introduction to
 MongoDB replica sets and how PyMongo connects to them.)
 
-You must call :meth:`~motor.MotorConnection.open_sync` on this connection object
+You must call :meth:`~motor.MotorClient.open_sync` on this connection object
 before any other operations on it:
 
 .. doctest:: before-inserting-2000-docs
 
-  >>> connection = motor.MotorConnection().open_sync()
+  >>> connection = motor.MotorClient().open_sync()
 
 This connects to a ``mongod`` listening on the default host and port. You can
 specify the host and port like:
 
 .. doctest:: before-inserting-2000-docs
 
-  >>> connection = motor.MotorConnection('localhost', 27017).open_sync()
+  >>> connection = motor.MotorClient('localhost', 27017).open_sync()
 
 Getting a Database
 ------------------
@@ -115,11 +115,11 @@ Tornado Application Startup Sequence
 Now that we can open a connection and get a database, we're ready to start
 a Tornado application that uses Motor.
 
-:meth:`~motor.MotorConnection.open_sync` is a blocking operation so it should
+:meth:`~motor.MotorClient.open_sync` is a blocking operation so it should
 be called before listening for HTTP requests. Here's an example startup
 sequence for a Tornado web application::
 
-    db = motor.MotorConnection().open_sync().test_database
+    db = motor.MotorClient().open_sync().test_database
 
     application = tornado.web.Application([
         (r'/', MainHandler)
@@ -149,7 +149,7 @@ multiple subprocesses, you must create the connection object **after** calling
     # start(0) starts a subprocess for each CPU core
     server.start(0)
 
-    db = motor.MotorConnection().open_sync().test_database
+    db = motor.MotorClient().open_sync().test_database
 
     # Delayed initialization of settings
     application.settings['db'] = db
@@ -568,8 +568,8 @@ the basic :meth:`command` method.
 Further Reading
 ---------------
 The handful of classes and methods introduced here are sufficient for daily
-tasks. The API documentation for :class:`~motor.MotorConnection`,
-:class:`~motor.MotorReplicaSetConnection`, :class:`~motor.MotorDatabase`,
+tasks. The API documentation for :class:`~motor.MotorClient`,
+:class:`~motor.MotorReplicaSetClient`, :class:`~motor.MotorDatabase`,
 :class:`~motor.MotorCollection`, and :class:`~motor.MotorCursor` provides a
 reference to Motor's complete feature set.
 

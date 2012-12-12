@@ -44,7 +44,7 @@ class MotorIPv6Test(MotorTest):
         # Make sure we can connect over IPv6 using both open() and open_sync()
         for open_sync in (True, False):
             cx_string = "mongodb://[::1]:%d" % port
-            cx = motor.MotorConnection(cx_string)
+            cx = motor.MotorClient(cx_string)
             if open_sync:
                 cx.open_sync()
             else:

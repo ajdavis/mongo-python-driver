@@ -31,7 +31,8 @@ from tornado.ioloop import IOLoop
 import motor
 from pymongo import son_manipulator
 from pymongo.errors import (
-    ConnectionFailure, TimeoutError, OperationFailure, InvalidOperation)
+    ConnectionFailure, TimeoutError, OperationFailure, InvalidOperation,
+    ConfigurationError)
 from pymongo.common import SAFE_OPTIONS
 
 
@@ -155,7 +156,7 @@ class SynchroMeta(type):
         # Create the class, e.g. the Synchro Connection or Database class
         new_class = type.__new__(cls, name, bases, attrs)
 
-        # delegate_class is a Motor class like MotorConnection
+        # delegate_class is a Motor class like MotorClient
         delegate_class = new_class.__delegate_class__
 
         if delegate_class:
@@ -166,7 +167,7 @@ class SynchroMeta(type):
 
             for attrname, delegate_attr in delegated_attrs.items():
                 # If attrname is in attrs, it means Synchro has overridden
-                # this attribute, e.g. Database.create_collection which is
+                # this attribute, e.g. Database.add_son_manipulator which is
                 # special-cased. Ignore such attrs.
                 if attrname not in attrs:
                     if isinstance(delegate_attr, motor.Async):
@@ -198,7 +199,7 @@ class SynchroMeta(type):
 
 class Synchro(object):
     """
-    Wraps a MotorConnection, MotorDatabase, MotorCollection, etc. and
+    Wraps a MotorClient, MotorDatabase, MotorCollection, etc. and
     makes it act like the synchronous pymongo equivalent
     """
     __metaclass__ = SynchroMeta
@@ -213,7 +214,7 @@ class Synchro(object):
 
     def synchronize(self, async_method, has_safe_arg=False):
         """
-        @param async_method:        Bound method of a MotorConnection,
+        @param async_method:        Bound method of a MotorClient,
                                     MotorDatabase, etc.
         @param has_safe_arg:        Whether the method takes a 'safe' argument
         @return:                    A synchronous wrapper around the method
@@ -286,7 +287,7 @@ class Connection(Synchro):
     HOST = 'localhost'
     PORT = 27017
 
-    __delegate_class__ = motor.MotorConnection
+    __delegate_class__ = motor.MotorClient
 
     def __init__(self, host=None, port=None, *args, **kwargs):
         # Motor doesn't implement auto_start_request
@@ -297,6 +298,17 @@ class Connection(Synchro):
         port = port if port is not None else self.PORT
         self.delegate = kwargs.pop('delegate', None)
 
+        # TODO: HACK, remove, this is while PyMongo is testing Connection but
+        #   Motor wraps MongoClient
+        kwargs.setdefault('safe', False)
+        network_timeout = kwargs.pop('network_timeout', None)
+        if network_timeout is not None:
+            if (not isinstance(network_timeout, (int, float)) or
+                network_timeout <= 0):
+                raise ConfigurationError("network_timeout must "
+                                         "be a positive integer")
+            kwargs['socketTimeoutMS'] = network_timeout * 1000
+
         if not self.delegate:
             self.delegate = self.__delegate_class__(
                 host, port, *args, **kwargs
@@ -304,7 +316,7 @@ class Connection(Synchro):
             self.synchro_connect()
 
     def synchro_connect(self):
-        # Try to connect the MotorConnection before continuing; raise
+        # Try to connect the MotorClient before continuing; raise
         # ConnectionFailure if it times out.
         self.synchronize(self.delegate.open)()
 
@@ -342,11 +354,22 @@ class MasterSlaveConnection(object):
 
 
 class ReplicaSetConnection(Connection):
-    __delegate_class__ = motor.MotorReplicaSetConnection
+    __delegate_class__ = motor.MotorReplicaSetClient
 
     def __init__(self, *args, **kwargs):
         # Motor doesn't implement auto_start_request
         kwargs.pop('auto_start_request', None)
+
+        # TODO: HACK, remove, this is while PyMongo is testing Connection but
+        #   Motor wraps MongoClient
+        kwargs.setdefault('safe', False)
+        network_timeout = kwargs.pop('network_timeout', None)
+        if network_timeout is not None:
+            if (not isinstance(network_timeout, (int, float)) or
+                network_timeout <= 0):
+                raise ConfigurationError("network_timeout must "
+                                         "be a positive integer")
+            kwargs['socketTimeoutMS'] = network_timeout * 1000
 
         self.delegate = self.__delegate_class__(
             *args, **kwargs
@@ -482,6 +505,7 @@ class Cursor(Synchro):
     _Cursor__fields            = SynchroProperty()
     _Cursor__spec              = SynchroProperty()
     _Cursor__secondary_acceptable_latency_ms = SynchroProperty()
+
 
 class GridFS(Synchro):
     __delegate_class__ = motor.MotorGridFS

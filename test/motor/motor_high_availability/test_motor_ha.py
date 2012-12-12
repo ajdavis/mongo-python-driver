@@ -26,8 +26,8 @@ from test.high_availability import ha_tools
 
 import pymongo
 from pymongo import ReadPreference
-from pymongo.replica_set_connection import Member, Monitor
-from pymongo.connection import _partition_node
+from pymongo.mongo_replica_set_client import (
+    Member, Monitor, _partition_node)
 from pymongo.errors import AutoReconnect, OperationFailure
 
 import motor
@@ -46,7 +46,7 @@ class MotorTestSecondaryConnection(unittest.TestCase):
 
     @async_test_engine(timeout_sec=60)
     def test_secondary_connection(self, done):
-        self.c = motor.MotorReplicaSetConnection(
+        self.c = motor.MotorReplicaSetClient(
             self.seed, replicaSet=self.name).open_sync()
         self.assertTrue(bool(len(self.c.secondaries)))
         db = self.c.pymongo_test
@@ -63,26 +63,26 @@ class MotorTestSecondaryConnection(unittest.TestCase):
          secondary_port) = ha_tools.get_secondaries()[0].split(':')
         secondary_port = int(secondary_port)
 
-        self.assertTrue(motor.MotorConnection(
+        self.assertTrue(motor.MotorClient(
             primary_host, primary_port
         ).open_sync().is_primary)
 
-        self.assertTrue(motor.MotorConnection(
+        self.assertTrue(motor.MotorClient(
             primary_host, primary_port,
             read_preference=ReadPreference.PRIMARY_PREFERRED
         ).open_sync().is_primary)
 
-        self.assertTrue(motor.MotorConnection(
+        self.assertTrue(motor.MotorClient(
             primary_host, primary_port,
             read_preference=ReadPreference.SECONDARY_PREFERRED
         ).open_sync().is_primary)
 
-        self.assertTrue(motor.MotorConnection(
+        self.assertTrue(motor.MotorClient(
             primary_host, primary_port,
             read_preference=ReadPreference.NEAREST
         ).open_sync().is_primary)
 
-        self.assertTrue(motor.MotorConnection(
+        self.assertTrue(motor.MotorClient(
             primary_host, primary_port,
             read_preference=ReadPreference.SECONDARY
         ).open_sync().is_primary)
@@ -96,7 +96,7 @@ class MotorTestSecondaryConnection(unittest.TestCase):
             {'read_preference': ReadPreference.NEAREST},
             {'slave_okay': True},
         ]:
-            conn = motor.MotorConnection(secondary_host,
+            conn = motor.MotorClient(secondary_host,
                               secondary_port,
                               **kwargs).open_sync()
             self.assertEqual(secondary_host, conn.host)
@@ -109,7 +109,7 @@ class MotorTestSecondaryConnection(unittest.TestCase):
         secondary_host = ha_tools.get_arbiters()[0]
         host, port = ha_tools.get_arbiters()[0].split(':')
         port = int(port)
-        conn = motor.MotorConnection(host, port).open_sync()
+        conn = motor.MotorClient(host, port).open_sync()
         self.assertEqual(host, conn.host)
         self.assertEqual(port, conn.port)
         done()
@@ -135,7 +135,7 @@ class MotorTestPassiveAndHidden(unittest.TestCase):
     @async_test_engine(timeout_sec=60)
     def test_passive_and_hidden(self, done):
         loop = IOLoop.instance()
-        self.c = motor.MotorReplicaSetConnection(
+        self.c = motor.MotorReplicaSetClient(
             self.seed, replicaSet=self.name)
         self.c.open_sync()
         db = self.c.pymongo_test
@@ -189,7 +189,7 @@ class MotorTestHealthMonitor(unittest.TestCase):
     @async_test_engine(timeout_sec=60)
     def test_primary_failure(self, done):
         loop = IOLoop.instance()
-        c = motor.MotorReplicaSetConnection(self.seed, replicaSet=self.name)
+        c = motor.MotorReplicaSetClient(self.seed, replicaSet=self.name)
         c.open_sync()
         self.assertTrue(bool(len(c.secondaries)))
         primary = c.primary
@@ -198,7 +198,7 @@ class MotorTestHealthMonitor(unittest.TestCase):
         self.assertTrue(bool(len(killed)))
         yield gen.Task(loop.add_timeout, time.time() + 1)
 
-        # Wait for new primary to step up, and for MotorReplicaSetConnection
+        # Wait for new primary to step up, and for MotorReplicaSetClient
         # to detect it.
         for _ in xrange(30):
             if c.primary != primary and c.secondaries != secondaries:
@@ -211,7 +211,7 @@ class MotorTestHealthMonitor(unittest.TestCase):
     @async_test_engine(timeout_sec=60)
     def test_secondary_failure(self, done):
         loop = IOLoop.instance()
-        c = motor.MotorReplicaSetConnection(self.seed, replicaSet=self.name)
+        c = motor.MotorReplicaSetClient(self.seed, replicaSet=self.name)
         c.open_sync()
         self.assertTrue(bool(len(c.secondaries)))
         primary = c.primary
@@ -227,7 +227,7 @@ class MotorTestHealthMonitor(unittest.TestCase):
         ha_tools.restart_members([killed])
         self.assertEqual(primary, c.primary)
 
-        # Wait for secondary to join, and for MotorReplicaSetConnection
+        # Wait for secondary to join, and for MotorReplicaSetClient
         # to detect it.
         for _ in xrange(30):
             if c.secondaries != secondaries:
@@ -240,14 +240,14 @@ class MotorTestHealthMonitor(unittest.TestCase):
     @async_test_engine(timeout_sec=60)
     def test_primary_stepdown(self, done):
         loop = IOLoop.instance()
-        c = motor.MotorReplicaSetConnection(self.seed, replicaSet=self.name)
+        c = motor.MotorReplicaSetClient(self.seed, replicaSet=self.name)
         c.open_sync()
         self.assertTrue(bool(len(c.secondaries)))
         primary = c.primary
         secondaries = c.secondaries.copy()
         ha_tools.stepdown_primary()
 
-        # Wait for primary to step down, and for MotorReplicaSetConnection
+        # Wait for primary to step down, and for MotorReplicaSetClient
         # to detect it.
         for _ in xrange(30):
             if c.primary != primary and secondaries != c.secondaries:
@@ -271,7 +271,7 @@ class MotorTestWritesWithFailover(unittest.TestCase):
     @async_test_engine(timeout_sec=60)
     def test_writes_with_failover(self, done):
         loop = IOLoop.instance()
-        c = motor.MotorReplicaSetConnection(self.seed, replicaSet=self.name)
+        c = motor.MotorReplicaSetClient(self.seed, replicaSet=self.name)
         c.open_sync()
         primary = c.primary
         db = c.pymongo_test
@@ -314,7 +314,7 @@ class MotorTestReadWithFailover(unittest.TestCase):
     @async_test_engine(timeout_sec=60)
     def test_read_with_failover(self, done):
         loop = IOLoop.instance()
-        c = motor.MotorReplicaSetConnection(self.seed, replicaSet=self.name)
+        c = motor.MotorReplicaSetClient(self.seed, replicaSet=self.name)
         c.open_sync()
         self.assertTrue(bool(len(c.secondaries)))
 
@@ -387,7 +387,7 @@ class MotorTestReadPreference(unittest.TestCase):
         self.other_secondary_dc = {'dc': self.other_secondary_tags['dc']}
 
         # Synchronous PyMongo interfaces for convenience
-        self.c = pymongo.replica_set_connection.ReplicaSetConnection(
+        self.c = pymongo.mongo_replica_set_client.MongoReplicaSetClient(
             self.seed, replicaSet=self.name)
         self.db = self.c.pymongo_test
         self.w = len(self.c.secondaries) + 1
@@ -417,7 +417,7 @@ class MotorTestReadPreference(unittest.TestCase):
         # For each state, we verify the behavior of PRIMARY,
         # PRIMARY_PREFERRED, SECONDARY, SECONDARY_PREFERRED, and NEAREST
         loop = IOLoop.instance()
-        c = motor.MotorReplicaSetConnection(
+        c = motor.MotorReplicaSetClient(
             self.seed, replicaSet=self.name).open_sync()
 
         @gen.engine
@@ -703,7 +703,7 @@ class MotorTestReplicaSetAuth(unittest.TestCase):
 
         res = ha_tools.start_replica_set(members, auth=True)
         self.seed, self.name = res
-        self.c = pymongo.replica_set_connection.ReplicaSetConnection(
+        self.c = pymongo.mongo_replica_set_client.MongoReplicaSetClient(
             self.seed, replicaSet=self.name)
 
         # Add an admin user to enable auth
@@ -718,7 +718,7 @@ class MotorTestReplicaSetAuth(unittest.TestCase):
     @async_test_engine(timeout_sec=300)
     def test_auth_during_failover(self, done):
         loop = IOLoop.instance()
-        c = motor.MotorReplicaSetConnection(self.seed, replicaSet=self.name)
+        c = motor.MotorReplicaSetClient(self.seed, replicaSet=self.name)
         c.open_sync()
         db = c.pymongo_ha_auth
         res = yield motor.Op(db.authenticate, 'user', 'userpass')
@@ -761,7 +761,7 @@ class MotorTestMongosHighAvailability(unittest.TestCase):
 
     @async_test_engine(timeout_sec=300)
     def test_mongos_ha(self, done):
-        conn = motor.MotorConnection(self.seed_list).open_sync()
+        conn = motor.MotorClient(self.seed_list).open_sync()
         coll = conn[self.dbname].test
         res = yield motor.Op(coll.insert, {'foo': 'bar'})
         self.assertTrue(res)

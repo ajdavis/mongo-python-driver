@@ -8,21 +8,21 @@ Major differences
 Creating a connection
 ---------------------
 
-PyMongo's :class:`~pymongo.connection.Connection` and
-:class:`~pymongo.replica_set_connection.ReplicaSetConnection` constructors
+PyMongo's :class:`~pymongo.mongo_client.MongoClient` and
+:class:`~pymongo.mongo_replica_set_client.MongoReplicaSetClient` constructors
 block until they have established a connection to MongoDB. A
-:class:`~motor.MotorConnection` or :class:`~motor.MotorReplicaSetConnection`,
+:class:`~motor.MotorClient` or :class:`~motor.MotorReplicaSetClient`,
 however, is created unconnected. One should call
-:meth:`~motor.MotorConnection.open_sync` at the beginning of a Tornado web
+:meth:`~motor.MotorClient.open_sync` at the beginning of a Tornado web
 application, before accepting requests:
 
 .. code-block:: python
 
     import motor
-    connection = motor.MotorConnection().open_sync()
+    connection = motor.MotorClient().open_sync()
 
 To make a connection asynchronously once the application is running, call
-:meth:`~motor.MotorConnection.open`:
+:meth:`~motor.MotorClient.open`:
 
 .. code-block:: python
 
@@ -33,7 +33,7 @@ To make a connection asynchronously once the application is running, call
             # Use the connection
             pass
 
-    motor.MotorConnection().open(connected)
+    motor.MotorClient().open(connected)
 
 Callbacks
 ---------
@@ -55,7 +55,7 @@ For example, one uses
 
 .. code-block:: python
 
-    db = Connection().test
+    db = MongoClient().test
     user = db.users.find_one({'name': 'Jesse'})
     print user
 
@@ -63,7 +63,7 @@ But Motor's :meth:`~motor.MotorCollection.find_one` method works asynchronously:
 
 .. code-block:: python
 
-    db = MotorConnection().open_sync().test
+    db = MotorClient().open_sync().test
 
     def got_user(user, error):
         if error:
@@ -193,14 +193,14 @@ In PyMongo, you can set a network timeout which causes an
 :exc:`~pymongo.errors.AutoReconnect` exception if an operation does not complete
 in time::
 
-    db = Connection(socketTimeoutMS=500).test
+    db = MongoClient(socketTimeoutMS=500).test
     try:
         user = db.users.find_one({'name': 'Jesse'})
         print user
     except AutoReconnect:
         print 'timed out'
 
-:class:`~motor.MotorConnection` and :class:`~motor.MotorReplicaSetConnection`
+:class:`~motor.MotorClient` and :class:`~motor.MotorReplicaSetClient`
 support the same options. The exception isn't raised, instead it's passed to
 the callback as the ``error`` parameter, and the ``result`` parameter will be
 ``None``. Code using `tornado.gen`_ ends up looking very similar to the
@@ -251,7 +251,7 @@ the server. Obviously, this code is improved by `tornado.gen`_::
         print result
 
 Motor ignores the ``auto_start_request`` parameter to
-:class:`~motor.MotorConnection` or :class:`~motor.MotorReplicaSetConnection`.
+:class:`~motor.MotorClient` or :class:`~motor.MotorReplicaSetClient`.
 
 .. _tornado.gen: http://www.tornadoweb.org/documentation/gen.html
 
@@ -352,9 +352,9 @@ GridFS
 is_locked
 ---------
 
-:meth:`~motor.MotorConnection.is_locked` in Motor is a method requiring a
+:meth:`~motor.MotorClient.is_locked` in Motor is a method requiring a
 callback, whereas in PyMongo it is a property of
-:class:`~pymongo.connection.Connection`.
+:class:`~pymongo.mongo_client.MongoClient`.
 
 system_js
 ---------

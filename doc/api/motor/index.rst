@@ -21,8 +21,8 @@ Classes
 
 .. toctree::
 
-   motor_connection
-   motor_replica_set_connection
+   motor_client
+   motor_replica_set_client
    motor_database
    motor_collection
    motor_cursor

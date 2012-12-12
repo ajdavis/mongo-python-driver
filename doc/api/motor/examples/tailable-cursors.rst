@@ -9,7 +9,7 @@ Motor provides a convenience method :meth:`~motor.MotorCursor.tail`
     from tornado import ioloop, gen
     import motor
 
-    db = motor.MotorConnection().open_sync().test
+    db = motor.MotorClient().open_sync().test
 
     @gen.engine
     def tailable_example():

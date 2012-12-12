@@ -27,6 +27,7 @@ import tornado
 from tornado import ioloop, gen
 
 import pymongo
+import pymongo.mongo_client
 
 from test.test_connection import host, port
 from test.motor import MotorTest, async_test_engine, AssertRaises, AssertEqual
@@ -38,7 +39,7 @@ from test.utils import server_is_master_with_slave, delay
 class MotorConnectionTest(MotorTest):
     @async_test_engine()
     def test_connection(self, done):
-        cx = motor.MotorConnection(host, port)
+        cx = motor.MotorClient(host, port)
 
         # Can't access databases before connecting
         self.assertRaises(
@@ -61,7 +62,7 @@ class MotorConnectionTest(MotorTest):
         done()
 
     def test_connection_callback(self):
-        cx = motor.MotorConnection(host, port)
+        cx = motor.MotorClient(host, port)
         self.check_optional_callback(cx.open)
 
     @async_test_engine()
@@ -74,9 +75,9 @@ class MotorConnectionTest(MotorTest):
             connectTimeoutMS=1000, socketTimeoutMS=1500, max_pool_size=23,
             document_class=DictSubclass, tz_aware=True)
 
-        cx = yield motor.Op(motor.MotorConnection(*args, **kwargs).open)
-        sync_cx = cx.sync_connection()
-        self.assertTrue(isinstance(sync_cx, pymongo.connection.Connection))
+        cx = yield motor.Op(motor.MotorClient(*args, **kwargs).open)
+        sync_cx = cx.sync_client()
+        self.assertTrue(isinstance(sync_cx, pymongo.mongo_client.MongoClient))
         self.assertEqual(host, sync_cx.host)
         self.assertEqual(port, sync_cx.port)
         self.assertEqual(1000, sync_cx._MongoClient__conn_timeout * 1000.0)
@@ -95,7 +96,7 @@ class MotorConnectionTest(MotorTest):
     @async_test_engine()
     def test_open_sync(self, done):
         loop = ioloop.IOLoop.instance()
-        cx = motor.MotorConnection(host, port)
+        cx = motor.MotorClient(host, port)
         self.assertFalse(cx.connected)
 
         # open_sync() creates a special IOLoop just to run the connection
@@ -118,11 +119,11 @@ class MotorConnectionTest(MotorTest):
         done()
 
     def test_open_sync_custom_io_loop(self):
-        # Check that we can create a MotorConnection with a custom IOLoop, then
+        # Check that we can create a MotorClient with a custom IOLoop, then
         # call open_sync(), which uses a new loop, and the custom loop is
         # restored.
         loop = ioloop.IOLoop()
-        cx = motor.MotorConnection(host, port, io_loop=loop)
+        cx = motor.MotorClient(host, port, io_loop=loop)
         self.assertEqual(cx, cx.open_sync())
         self.assertTrue(cx.connected)
 
@@ -146,7 +147,7 @@ class MotorConnectionTest(MotorTest):
     def test_custom_io_loop(self):
         self.assertRaises(
             TypeError,
-            lambda: motor.MotorConnection(host, port, io_loop='foo')
+            lambda: motor.MotorClient(host, port, io_loop='foo')
         )
 
         loop = ioloop.IOLoop()
@@ -154,7 +155,7 @@ class MotorConnectionTest(MotorTest):
         @async_test_engine(io_loop=loop)
         def test(self, done):
             # Make sure we can do async things with the custom loop
-            cx = motor.MotorConnection(host, port, io_loop=loop)
+            cx = motor.MotorClient(host, port, io_loop=loop)
             yield AssertEqual(cx, cx.open)
             self.assertTrue(cx.connected)
             doc = yield motor.Op(
@@ -166,7 +167,8 @@ class MotorConnectionTest(MotorTest):
 
     def test_database_named_delegate(self):
         cx = self.motor_connection(host, port)
-        self.assertTrue(isinstance(cx.delegate, pymongo.connection.Connection))
+        self.assertTrue(
+            isinstance(cx.delegate, pymongo.mongo_client.MongoClient))
         self.assertTrue(isinstance(cx['delegate'], motor.MotorDatabase))
 
     def test_copy_db_argument_checking(self):
@@ -297,7 +299,7 @@ class MotorConnectionTest(MotorTest):
         exc = None
         try:
             # Assuming there isn't anything actually running on this port
-            yield motor.Op(motor.MotorConnection('localhost', 8765).open)
+            yield motor.Op(motor.MotorClient('localhost', 8765).open)
         except Exception, e:
             exc = e
 
@@ -310,7 +312,7 @@ class MotorConnectionTest(MotorTest):
         start = time.time()
         try:
             # Assuming asdf.com isn't running an open mongod on this port
-            yield motor.Op(motor.MotorConnection(
+            yield motor.Op(motor.MotorClient(
                 'asdf.com', 8765, connectTimeoutMS=1000).open)
         except Exception, e:
             exc = e
@@ -326,13 +328,13 @@ class MotorConnectionTest(MotorTest):
 
     @async_test_engine()
     def test_max_pool_size_validation(self, done):
-        cx = motor.MotorConnection(host=host, port=port, max_pool_size=-1)
+        cx = motor.MotorClient(host=host, port=port, max_pool_size=-1)
         yield AssertRaises(ConfigurationError, cx.open)
 
-        cx = motor.MotorConnection(host=host, port=port, max_pool_size='foo')
+        cx = motor.MotorClient(host=host, port=port, max_pool_size='foo')
         yield AssertRaises(ConfigurationError, cx.open)
 
-        c = motor.MotorConnection(host=host, port=port, max_pool_size=100)
+        c = motor.MotorClient(host=host, port=port, max_pool_size=100)
         yield motor.Op(c.open)
         self.assertEqual(c.max_pool_size, 100)
         done()

@@ -1,9 +1,9 @@
-:class:`MotorConnection` -- Connection to MongoDB
+:class:`MotorClient` -- Connection to MongoDB
 =================================================
 
 .. currentmodule:: motor
 
-.. autoclass:: motor.MotorConnection
+.. autoclass:: motor.MotorClient
 
   .. automethod:: open
   .. automethod:: open_sync
@@ -12,7 +12,7 @@
      Disconnect from MongoDB.
 
      Disconnecting will close all underlying sockets in the
-     connection pool. If the :class:`MotorConnection` is used again it
+     connection pool. If the :class:`MotorClient` is used again it
      will be automatically re-opened.
 
   .. method:: close
@@ -21,7 +21,7 @@
 
   .. describe:: c[db_name] || c.db_name
 
-     Get the `db_name` :class:`MotorDatabase` on :class:`MotorConnection` `c`.
+     Get the `db_name` :class:`MotorDatabase` on :class:`MotorClient` `c`.
 
      Raises :class:`~pymongo.errors.InvalidName` if an invalid database name is used.
      Raises :class:`~pymongo.errors.InvalidOperation` if connection isn't opened yet.
@@ -39,10 +39,10 @@
   .. automotorattribute:: slave_okay
   .. automotorattribute:: safe
   .. automotorattribute:: is_locked
-  .. method:: sync_connection
+  .. method:: sync_client
 
-     Get a :class:`~pymongo.connection.Connection` with the same
-     configuration as this :class:`MotorConnection`
+     Get a :class:`~pymongo.mongo_client.MongoClient` with the same
+     configuration as this :class:`MotorClient`
 
   .. automotormethod:: get_lasterror_options
   .. automotormethod:: set_lasterror_options

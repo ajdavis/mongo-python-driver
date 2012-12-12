@@ -37,7 +37,7 @@ class MotorCollectionTest(MotorTest):
     @async_test_engine()
     def test_collection(self, done):
         # Test that we can create a collection directly, not just from
-        # MotorConnection's accessors
+        # MotorClient's accessors
         db = self.motor_connection(host, port).pymongo_test
         collection = motor.MotorCollection(db, 'test_collection')
 
@@ -91,7 +91,7 @@ class MotorCollectionTest(MotorTest):
     @async_test_engine()
     def test_find_is_async(self, done):
         # Confirm find() is async by launching two operations which will finish
-        # out of order. Also test that MotorConnection doesn't reuse sockets
+        # out of order. Also test that MotorClient doesn't reuse sockets
         # incorrectly.
         cx = self.motor_connection(host, port)
 
@@ -480,7 +480,7 @@ class MotorCollectionTest(MotorTest):
 
     @async_test_engine()
     def test_nested_callbacks_2(self, done):
-        cx = motor.MotorConnection(host, port)
+        cx = motor.MotorClient(host, port)
         yield_point = yield gen.Callback(0)
 
         def connected(cx, error):
@@ -559,18 +559,18 @@ class MotorCollectionTest(MotorTest):
 
     @async_test_engine()
     def test_get_last_error_options(self, done):
-        cx = motor.MotorConnection(host, port)
+        cx = motor.MotorClient(host, port)
 
         # An implementation quirk of Motor, can't access properties until
         # connected
         self.assertRaises(pymongo.errors.InvalidOperation, getattr, cx, 'safe')
 
         yield motor.Op(cx.open)
-        self.assertFalse(cx.safe)
+        self.assertTrue(cx.safe)
         self.assertEqual({}, cx.get_lasterror_options())
 
         # TODO: once PyMongo 'safe' behavior is fixed, test that
-        # MotorConnection's 'safe' is True with a GLE option and safe=False
+        # MotorClient's 'safe' is True with a GLE option and safe=False
         # PYTHON-358
         for safe, gle_options in [
             (True,  {}),
@@ -578,7 +578,7 @@ class MotorCollectionTest(MotorTest):
             (True, {'wtimeout': 1000}),
             (True, {'j': True}),
         ]:
-            cx = motor.MotorConnection(host, port, safe=safe, **gle_options)
+            cx = motor.MotorClient(host, port, safe=safe, **gle_options)
             yield motor.Op(cx.open)
             expected_safe = bool(safe or gle_options)
             self.assertEqual(expected_safe, cx.safe,

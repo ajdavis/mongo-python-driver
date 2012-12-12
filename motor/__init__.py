@@ -37,6 +37,7 @@ except ImportError:
 import pymongo
 import pymongo.common
 import pymongo.errors
+import pymongo.mongo_client
 import pymongo.mongo_replica_set_client
 import pymongo.pool
 import pymongo.son_manipulator
@@ -49,7 +50,7 @@ from gridfs import grid_file
 
 
 __all__ = [
-    'MotorConnection', 'MotorReplicaSetConnection', 'Op', 'WaitOp',
+    'MotorClient', 'MotorReplicaSetClient', 'Op', 'WaitOp',
     'WaitAllOps'
 ]
 
@@ -62,7 +63,7 @@ __all__ = [
 # TODO: review open_sync(), does it need to disconnect after success to ensure
 #   all IOStreams with old IOLoop are gone?
 # TODO: what do safe=True and other get_last_error options mean when creating
-#   a MotorConnection or MotorReplicaSetConnection?
+#   a MotorClient or MotorReplicaSetClient?
 # TODO: ensure all documented methods return MotorGridOut, not GridOut,
 #   MotorCollection, not Collection, etc.
 
@@ -225,7 +226,7 @@ class MotorPool(pymongo.pool.GreenletPool):
 
     Note this inherits from GreenletPool so that when PyMongo internally calls
     start_request, e.g. in Database.authenticate() or
-    Connection.copy_database(), this pool assigns a socket to the current
+    MongoClient.copy_database(), this pool assigns a socket to the current
     greenlet for the duration of the method. Request semantics are not exposed
     to Motor's users.
     """
@@ -295,7 +296,7 @@ def asynchronize(io_loop, sync_method, has_safe_arg, callback_required):
     :Parameters:
      - `io_loop`:           A Tornado IOLoop
      - `sync_method`:       Bound method of pymongo Collection, Database,
-                            Connection, or Cursor
+                            MongoClient, or Cursor
      - `has_safe_arg`:      Whether the method takes a 'safe' argument
      - `callback_required`: If True, raise TypeError if no callback is passed
     """
@@ -672,8 +673,8 @@ class MotorOpenable(object):
         return self._init_args, self._init_kwargs
 
 
-class MotorConnectionBase(MotorOpenable, MotorBase):
-    """MotorConnection and MotorReplicaSetConnection common functionality.
+class MotorClientBase(MotorOpenable, MotorBase):
+    """MotorClient and MotorReplicaSetClient common functionality.
     """
     database_names = AsyncRead()
     server_info    = AsyncRead()
@@ -730,7 +731,7 @@ class MotorConnectionBase(MotorOpenable, MotorBase):
 
         return self
 
-    def sync_connection(self):
+    def sync_client(self):
         return self.__delegate_class__(
             *self._init_args, **self._init_kwargs)
 
@@ -765,8 +766,8 @@ class MotorConnectionBase(MotorOpenable, MotorBase):
         return self._init_args, kwargs
 
 
-class MotorConnection(MotorConnectionBase):
-    __delegate_class__ = pymongo.connection.Connection
+class MotorClient(MotorClientBase):
+    __delegate_class__ = pymongo.mongo_client.MongoClient
 
     kill_cursors = AsyncCommand()
     fsync        = AsyncCommand()
@@ -779,17 +780,17 @@ class MotorConnection(MotorConnectionBase):
         """Create a new connection to a single MongoDB instance at *host:port*.
 
         :meth:`open` or :meth:`open_sync` must be called before using a new
-        MotorConnection. No property access is allowed before the connection
+        MotorClient. No property access is allowed before the connection
         is opened.
 
-        MotorConnection takes the same constructor arguments as
-        :class:`~pymongo.connection.Connection`, as well as:
+        MotorClient takes the same constructor arguments as
+        :class:`~pymongo.mongo_client.MongoClient`, as well as:
 
         :Parameters:
           - `io_loop` (optional): Special :class:`tornado.ioloop.IOLoop`
             instance to use instead of default
         """
-        super(MotorConnection, self).__init__(*args, **kwargs)
+        super(MotorClient, self).__init__(*args, **kwargs)
 
     def is_locked(self, callback):
         """Passes ``True`` to the callback if this server is locked, otherwise
@@ -799,7 +800,7 @@ class MotorConnection(MotorConnectionBase):
 
             @gen.engine
             def lock_unlock():
-                c = yield motor.Op(motor.MotorConnection().open)
+                c = yield motor.Op(motor.MotorClient().open)
                 locked = yield motor.Op(c.is_locked)
                 assert locked is False
                 yield motor.Op(c.fsync, lock=True)
@@ -810,10 +811,10 @@ class MotorConnection(MotorConnectionBase):
         :Parameters:
          - `callback`:    function taking parameters (result, error)
 
-        .. note:: PyMongo's :attr:`~pymongo.connection.Connection.is_locked` is
-           a property that synchronously executes the `currentOp` command on the
-           server before returning. In Motor, `is_locked` must take a callback
-           and executes asynchronously.
+        .. note:: PyMongo's :attr:`~pymongo.mongo_client.MongoClient.is_locked`
+           is a property that synchronously executes the `currentOp` command on
+           the server before returning. In Motor, `is_locked` must take a
+           callback and executes asynchronously.
         """
         def is_locked(result, error):
             if error:
@@ -828,8 +829,8 @@ class MotorConnection(MotorConnectionBase):
         return [self.delegate._MongoClient__pool]
 
 
-class MotorReplicaSetConnection(MotorConnectionBase):
-    __delegate_class__ = pymongo.replica_set_connection.ReplicaSetConnection
+class MotorReplicaSetClient(MotorClientBase):
+    __delegate_class__ = pymongo.mongo_replica_set_client.MongoReplicaSetClient
 
     primary     = ReadOnlyDelegateProperty()
     secondaries = ReadOnlyDelegateProperty()
@@ -842,11 +843,11 @@ class MotorReplicaSetConnection(MotorConnectionBase):
         """Create a new connection to a MongoDB replica set.
 
         :meth:`open` or :meth:`open_sync` must be called before using a new
-        MotorReplicaSetConnection. No property access is allowed before the
+        MotorReplicaSetClient. No property access is allowed before the
         connection is opened.
 
-        MotorReplicaSetConnection takes the same constructor arguments as
-        :class:`~pymongo.replica_set_connection.ReplicaSetConnection`,
+        MotorReplicaSetClient takes the same constructor arguments as
+        :class:`~pymongo.mongo_replica_set_client.MongoReplicaSetClient`,
         as well as:
 
         :Parameters:
@@ -854,7 +855,7 @@ class MotorReplicaSetConnection(MotorConnectionBase):
             instance to use instead of default
         """
         # We only override __init__ to replace its docstring
-        super(MotorReplicaSetConnection, self).__init__(*args, **kwargs)
+        super(MotorReplicaSetClient, self).__init__(*args, **kwargs)
 
     def open_sync(self):
         """Synchronous open(), returning self.
@@ -865,7 +866,7 @@ class MotorReplicaSetConnection(MotorConnectionBase):
         """
         # TODO: revisit and refactor open, open_sync(), custom-loop handling,
         #   and the monitor
-        super(MotorReplicaSetConnection, self).open_sync()
+        super(MotorReplicaSetClient, self).open_sync()
 
         # We need to wait for open_sync() to complete and restore the
         # original IOLoop before starting the monitor. This is a hack.
@@ -887,13 +888,13 @@ class MotorReplicaSetConnection(MotorConnectionBase):
                     # No errors
                     callback(self, None)
 
-        super(MotorReplicaSetConnection, self)._open(callback=opened)
+        super(MotorReplicaSetClient, self)._open(callback=opened)
 
     def _delegate_init_args(self):
         # This _monitor_class will be passed to PyMongo's
-        # ReplicaSetConnection when we create it.
+        # MongoReplicaSetClient when we create it.
         args, kwargs = super(
-            MotorReplicaSetConnection, self)._delegate_init_args()
+            MotorReplicaSetClient, self)._delegate_init_args()
         kwargs['_monitor_class'] = MotorReplicaSetMonitor
         return args, kwargs
 
@@ -910,9 +911,9 @@ class MotorReplicaSetConnection(MotorConnectionBase):
 class MotorReplicaSetMonitor(pymongo.mongo_replica_set_client.Monitor):
     def __init__(self, rsc):
         assert isinstance(
-            rsc, pymongo.replica_set_connection.ReplicaSetConnection), (
+            rsc, pymongo.mongo_replica_set_client.MongoReplicaSetClient), (
             "First argument to MotorReplicaSetMonitor must be"
-            " ReplicaSetConnection, not %s" % repr(rsc))
+            " MongoReplicaSetClient, not %s" % repr(rsc))
 
         # Fake the event_class: we won't use it
         pymongo.mongo_replica_set_client.Monitor.__init__(
@@ -995,9 +996,9 @@ class MotorDatabase(MotorBase):
     outgoing_copying_manipulators = ReadOnlyDelegateProperty()
 
     def __init__(self, connection, name):
-        if not isinstance(connection, MotorConnectionBase):
+        if not isinstance(connection, MotorClientBase):
             raise TypeError("First argument to MotorDatabase must be "
-                            "MotorConnectionBase, not %s" % repr(connection))
+                            "MotorClientBase, not %s" % repr(connection))
 
         self.connection = connection
         self.delegate = Database(connection.delegate, name)
@@ -1196,14 +1197,14 @@ class MotorCursor(MotorBase):
 
           import sys
 
-          from pymongo.connection import Connection
-          Connection().test.test_collection.remove(safe=True)
+          from pymongo.mongo_client import MongoClient
+          MongoClient().test.test_collection.remove(safe=True)
 
           import motor
-          from motor import MotorConnection
+          from motor import MotorClient
           from tornado.ioloop import IOLoop
           from tornado import gen
-          collection = MotorConnection().open_sync().test.test_collection
+          collection = MotorClient().open_sync().test.test_collection
 
         .. doctest:: fetch_next
 
@@ -1258,11 +1259,11 @@ class MotorCursor(MotorBase):
 
           import sys
 
-          from pymongo.connection import Connection
-          Connection().test.test_collection.remove()
-          from motor import MotorConnection
+          from pymongo.mongo_client import MongoClient
+          MongoClient().test.test_collection.remove()
+          from motor import MotorClient
           from tornado.ioloop import IOLoop
-          collection = MotorConnection().open_sync().test.test_collection
+          collection = MotorClient().open_sync().test.test_collection
 
         .. doctest:: each
 
@@ -1330,12 +1331,12 @@ class MotorCursor(MotorBase):
 
         .. testsetup:: to_list
 
-          from pymongo.connection import Connection
-          Connection().test.test_collection.remove(safe=True)
-          from motor import MotorConnection
+          from pymongo.mongo_client import MongoClient
+          MongoClient().test.test_collection.remove(safe=True)
+          from motor import MotorClient
           from tornado.ioloop import IOLoop
           from tornado import gen
-          collection = MotorConnection().open_sync().test.test_collection
+          collection = MotorClient().open_sync().test.test_collection
           import motor
 
         .. doctest:: to_list
@@ -1488,12 +1489,12 @@ class MotorCursor(MotorBase):
         .. testsetup:: getitem
 
           import sys
-          from pymongo.connection import Connection
-          Connection().test.test_collection.remove(safe=True)
-          from motor import MotorConnection
+          from pymongo.mongo_client import MongoClient
+          MongoClient().test.test_collection.remove(safe=True)
+          from motor import MotorClient
           from tornado.ioloop import IOLoop
           from tornado import gen
-          collection = MotorConnection().open_sync().test.test_collection
+          collection = MotorClient().open_sync().test.test_collection
           import motor
 
         .. doctest:: getitem

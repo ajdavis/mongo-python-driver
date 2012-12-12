@@ -34,7 +34,7 @@ from pymongo.son_manipulator import AutoReference, NamespaceInjector
 class MotorDatabaseTest(MotorTest):
     @async_test_engine()
     def test_database(self, done):
-        # Test that we can create a db directly, not just from MotorConnection's
+        # Test that we can create a db directly, not just from MotorClient's
         # accessors
         cx = self.motor_connection(host, port)
         db = motor.MotorDatabase(cx, 'pymongo_test')

@@ -28,7 +28,7 @@ from tornado import ioloop, iostream
 from test.test_connection import host, port
 from test.motor import MotorTest, async_test_engine, AssertEqual, AssertRaises
 import pymongo.errors
-import pymongo.replica_set_connection
+import pymongo.mongo_replica_set_client
 from test.test_replica_set_connection import TestConnectionReplicaSetBase
 
 
@@ -40,7 +40,7 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
 
     @async_test_engine()
     def test_replica_set_connection(self, done):
-        cx = motor.MotorReplicaSetConnection(
+        cx = motor.MotorReplicaSetClient(
             '%s:%s' % (host, port), replicaSet=self.name)
 
         # Can't access databases before connecting
@@ -64,14 +64,14 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
         done()
 
     def test_connection_callback(self):
-        cx = motor.MotorReplicaSetConnection(
+        cx = motor.MotorReplicaSetClient(
             '%s:%s' % (host, port), replicaSet=self.name)
         self.check_optional_callback(cx.open)
 
     @async_test_engine()
     def test_open_sync(self, done):
         loop = ioloop.IOLoop.instance()
-        cx = motor.MotorReplicaSetConnection(
+        cx = motor.MotorReplicaSetClient(
             '%s:%s' % (host, port), replicaSet=self.name)
         self.assertFalse(cx.connected)
 
@@ -99,11 +99,11 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
         done()
 
     def test_open_sync_custom_io_loop(self):
-        # Check that we can create a MotorReplicaSetConnection with a custom
+        # Check that we can create a MotorReplicaSetClient with a custom
         # IOLoop, then call open_sync(), which uses a new loop, and the custom
         # loop is restored.
         loop = puritanical.PuritanicalIOLoop()
-        cx = motor.MotorReplicaSetConnection(
+        cx = motor.MotorReplicaSetClient(
             '%s:%s' % (host, port), replicaSet=self.name, io_loop=loop)
         self.assertEqual(cx, cx.open_sync())
         self.assertTrue(cx.connected)
@@ -133,7 +133,7 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
     def test_custom_io_loop(self):
         self.assertRaises(
             TypeError,
-            lambda: motor.MotorReplicaSetConnection(
+            lambda: motor.MotorReplicaSetClient(
                 '%s:%s' % (host, port), replicaSet=self.name, io_loop='foo')
         )
 
@@ -142,7 +142,7 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
         @async_test_engine(io_loop=loop)
         def test(self, done):
             # Make sure we can do async things with the custom loop
-            cx = motor.MotorReplicaSetConnection(
+            cx = motor.MotorReplicaSetClient(
                 '%s:%s' % (host, port), replicaSet=self.name, io_loop=loop)
             yield AssertEqual(cx, cx.open)
             self.assertTrue(cx.connected)
@@ -169,11 +169,11 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
             connectTimeoutMS=1000, socketTimeoutMS=1500, max_pool_size=23,
             document_class=DictSubclass, tz_aware=True, replicaSet=self.name)
 
-        cx = yield motor.Op(motor.MotorReplicaSetConnection(
+        cx = yield motor.Op(motor.MotorReplicaSetClient(
             *args, **kwargs).open)
-        sync_cx = cx.sync_connection()
+        sync_cx = cx.sync_client()
         self.assertTrue(isinstance(
-            sync_cx, pymongo.replica_set_connection.ReplicaSetConnection))
+            sync_cx, pymongo.mongo_replica_set_client.MongoReplicaSetClient))
         self.assertFalse(isinstance(sync_cx._MongoReplicaSetClient__monitor,
             motor.MotorReplicaSetMonitor))
         self.assertEqual(1000,
@@ -196,7 +196,7 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
     def test_auto_reconnect_exception_when_read_preference_is_secondary(
         self, done
     ):
-        cx = motor.MotorReplicaSetConnection(
+        cx = motor.MotorReplicaSetClient(
             '%s:%s' % (host, port), replicaSet=self.name)
 
         yield motor.Op(cx.open)
