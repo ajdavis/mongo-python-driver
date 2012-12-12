@@ -507,6 +507,9 @@ class WrapAsync(Async):
     def set_name(self, name):
         self.prop.set_name(name)
 
+    def get_name(self):
+        return self.prop.name
+
 
 class UnwrapAsync(Unwrap):
     def __init__(self, prop, motor_class):
