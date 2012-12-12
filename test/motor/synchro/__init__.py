@@ -123,6 +123,10 @@ class WrapOutgoing(motor.DelegateProperty):
 
 
 class SynchroProperty(object):
+    """Used to fake private properties like Cursor.__slave_okay - don't use
+    for real properties like write_concern or you'll mask missing features in
+    Motor!
+    """
     def __init__(self):
         self.name = None
 
@@ -210,7 +214,6 @@ class Synchro(object):
 
     _BaseObject__set_slave_okay = SynchroProperty()
     _BaseObject__set_safe       = SynchroProperty()
-    write_concern               = SynchroProperty()
 
     def synchronize(self, async_method, has_safe_arg=False):
         """

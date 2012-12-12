@@ -595,6 +595,7 @@ class MotorBase(object):
     read_preference                 = ReadWriteDelegateProperty()
     tag_sets                        = ReadWriteDelegateProperty()
     secondary_acceptable_latency_ms = ReadWriteDelegateProperty()
+    write_concern                   = ReadWriteDelegateProperty()
 
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, repr(self.delegate))
