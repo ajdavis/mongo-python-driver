@@ -64,8 +64,6 @@ __all__ = [
 #   all IOStreams with old IOLoop are gone?
 # TODO: what do safe=True and other get_last_error options mean when creating
 #   a MotorClient or MotorReplicaSetClient?
-# TODO: ensure all documented methods return MotorGridOut, not GridOut,
-#   MotorCollection, not Collection, etc.
 
 
 def check_callable(kallable, required=False):
