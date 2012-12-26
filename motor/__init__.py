@@ -1120,7 +1120,6 @@ class MotorCursorChainingMethod(DelegateProperty):
 
 class MotorCursor(MotorBase):
     __delegate_class__ = Cursor
-    # TODO: test all these in test_motor_cursor.py
     count         = AsyncRead()
     distinct      = AsyncRead()
     explain       = AsyncRead()

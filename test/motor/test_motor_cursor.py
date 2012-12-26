@@ -75,6 +75,13 @@ class MotorCursorTest(MotorTest):
         done()
 
     @async_test_engine()
+    def test_distinct(self, done):
+        coll = self.motor_connection(host, port).pymongo_test.test_collection
+        self.assertEqual(set(range(10)), set((
+            yield motor.Op(coll.find({'_id': {'$lt': 10}}).distinct, '_id'))))
+        done()
+
+    @async_test_engine()
     def test_fetch_next(self, done):
         coll = self.motor_connection(host, port).pymongo_test.test_collection
         # 200 results, only including _id field, sorted by _id
