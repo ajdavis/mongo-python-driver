@@ -602,15 +602,14 @@ class MotorBase(object):
 
 
 class MotorOpenable(object):
-    """Base class for Motor objects that must be initialized in two stages:
+    """Base class for Motor objects that can be initialized in two stages:
        basic setup in __init__ and setup requiring I/O in open(), which
        creates the delegate object.
     """
     __metaclass__ = MotorMeta
     __delegate_class__ = None
 
-    def __init__(self, *args, **kwargs):
-        io_loop = kwargs.pop('io_loop', None)
+    def __init__(self, delegate, io_loop, *args, **kwargs):
         if io_loop:
             if not isinstance(io_loop, ioloop.IOLoop):
                 raise TypeError(
@@ -620,13 +619,11 @@ class MotorOpenable(object):
         else:
             self.io_loop = ioloop.IOLoop.instance()
 
-        if 'delegate' in kwargs:
-            self.delegate = kwargs['delegate']
-        else:
-            # Store args and kwargs for when open() is called
-            self._init_args = args
-            self._init_kwargs = kwargs
-            self.delegate = None
+        self.delegate = delegate
+
+        # Store args and kwargs for when open() is called
+        self._init_args = args
+        self._init_kwargs = kwargs
 
     def get_io_loop(self):
         return self.io_loop
@@ -644,6 +641,7 @@ class MotorOpenable(object):
         check_callable(callback)
 
         if self.delegate:
+            # Already open
             if callback:
                 self.io_loop.add_callback(
                     functools.partial(callback, self, None))
@@ -791,7 +789,8 @@ class MotorClient(MotorClientBase):
           - `io_loop` (optional): Special :class:`tornado.ioloop.IOLoop`
             instance to use instead of default
         """
-        super(MotorClient, self).__init__(*args, **kwargs)
+        super(MotorClient, self).__init__(
+            None, kwargs.pop('io_loop', None), *args, **kwargs)
 
     def is_locked(self, callback):
         """Passes ``True`` to the callback if this server is locked, otherwise
@@ -856,7 +855,8 @@ class MotorReplicaSetClient(MotorClientBase):
             instance to use instead of default
         """
         # We only override __init__ to replace its docstring
-        super(MotorReplicaSetClient, self).__init__(*args, **kwargs)
+        super(MotorReplicaSetClient, self).__init__(
+            None, kwargs.pop('io_loop', None), *args, **kwargs)
 
     def open_sync(self):
         """Synchronous open(), returning self.
@@ -865,17 +865,16 @@ class MotorReplicaSetClient(MotorClientBase):
         :meth:`open` on the loop, and deletes the loop when :meth:`open`
         completes.
         """
-        # TODO: revisit and refactor open, open_sync(), custom-loop handling,
-        #   and the monitor
         super(MotorReplicaSetClient, self).open_sync()
 
         # We need to wait for open_sync() to complete and restore the
-        # original IOLoop before starting the monitor. This is a hack.
+        # original IOLoop before starting the monitor.
         self.delegate._MongoReplicaSetClient__monitor.start_motor(self.io_loop)
         return self
 
     def open(self, callback):
         check_callable(callback)
+
         def opened(result, error):
             if error:
                 callback(None, error)
@@ -1630,7 +1629,7 @@ class MotorGridOut(MotorOpenable):
         if isinstance(root_collection, grid_file.GridOut):
             # Short cut
             MotorOpenable.__init__(
-                self, delegate=root_collection, io_loop=io_loop)
+                self, root_collection, io_loop)
         else:
             if not isinstance(root_collection, MotorCollection):
                 raise TypeError(
@@ -1641,8 +1640,8 @@ class MotorGridOut(MotorOpenable):
                 "Can't override IOLoop for MotorGridOut"
 
             MotorOpenable.__init__(
-                self, root_collection.delegate, file_id, file_document,
-                io_loop=root_collection.get_io_loop())
+                self, None, root_collection.get_io_loop(),
+                root_collection.delegate, file_id, file_document)
 
     @gen.engine
     def stream_to_handler(self, request_handler, callback=None):
@@ -1749,8 +1748,7 @@ class MotorGridIn(MotorOpenable):
         if isinstance(root_collection, grid_file.GridIn):
             # Short cut
             MotorOpenable.__init__(
-                self, delegate=root_collection,
-                io_loop=kwargs.pop('io_loop', None))
+                self, root_collection, kwargs.pop('io_loop', None))
         else:
             if not isinstance(root_collection, MotorCollection):
                 raise TypeError(
@@ -1759,8 +1757,9 @@ class MotorGridIn(MotorOpenable):
 
             assert 'io_loop' not in kwargs, \
                 "Can't override IOLoop for MotorGridIn"
-            kwargs['io_loop'] = root_collection.get_io_loop()
-            MotorOpenable.__init__(self, root_collection.delegate, **kwargs)
+            MotorOpenable.__init__(
+                self, None, root_collection.get_io_loop(),
+                root_collection.delegate, **kwargs)
 
 
 class MotorGridFS(MotorOpenable):
@@ -1792,7 +1791,7 @@ class MotorGridFS(MotorOpenable):
                             "MotorDatabase, not %s" % repr(database))
 
         MotorOpenable.__init__(
-            self, database.delegate, collection, io_loop=database.get_io_loop())
+            self, None, database.get_io_loop(), database.delegate, collection)
 
     def wrap(self, obj):
         if obj.__class__ is grid_file.GridIn:
