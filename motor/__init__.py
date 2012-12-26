@@ -57,7 +57,6 @@ __all__ = [
 # TODO: ensure we're doing
 #   timeouts as efficiently as possible, test performance hit with timeouts
 #   from registering and cancelling timeouts
-# TODO: test cross-host copydb
 # TODO: perhaps remove versionchanged Sphinx annotations from proxied methods,
 #   unless versionchanged >= 2.3 or so -- whenever Motor joins PyMongo
 # TODO: review open_sync(), does it need to disconnect after success to ensure
