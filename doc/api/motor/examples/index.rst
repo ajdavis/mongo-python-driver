@@ -10,3 +10,4 @@ Motor Examples
    callbacks-and-generators
    gridfs
    tailable-cursors
+   authentication
