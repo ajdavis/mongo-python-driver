@@ -1640,7 +1640,6 @@ class MotorGridOut(MotorOpenable):
                 self, None, root_collection.get_io_loop(),
                 root_collection.delegate, file_id, file_document)
 
-    @gen.engine
     def stream_to_handler(self, request_handler, callback=None):
         """Write the contents of this file to a
         :class:`tornado.web.RequestHandler`. This method will call `flush` on
@@ -1686,6 +1685,9 @@ class MotorGridOut(MotorOpenable):
         except Exception, e:
             if callback:
                 callback(None, e)
+
+    if requirements_satisfied:
+        stream_to_handler = gen.engine(stream_to_handler)
 
 
 class MotorGridIn(MotorOpenable):
