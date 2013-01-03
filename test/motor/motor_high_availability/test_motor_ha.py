@@ -32,12 +32,25 @@ from pymongo.errors import AutoReconnect, OperationFailure
 
 import motor
 from test.motor import async_test_engine, AssertEqual, AssertRaises
+from test.motor.motor_high_availability.test_motor_ha_utils import (
+    assertReadFrom, assertReadFromAll)
 
 # Override default 30-second interval for faster testing
 Monitor._refresh_interval = MONITOR_INTERVAL = 0.5
 
 
+# To make the code terser, copy modes into module scope
+PRIMARY = ReadPreference.PRIMARY
+PRIMARY_PREFERRED = ReadPreference.PRIMARY_PREFERRED
+SECONDARY = ReadPreference.SECONDARY
+SECONDARY_PREFERRED = ReadPreference.SECONDARY_PREFERRED
+NEAREST = ReadPreference.NEAREST
+
+
 class MotorTestDirectConnection(unittest.TestCase):
+    # Prevent Nose from automatically running this test
+    __test__ = False
+
     def setUp(self):
         super(MotorTestDirectConnection, self).setUp()
         members = [{}, {}, {'arbiterOnly': True}]
@@ -67,11 +80,11 @@ class MotorTestDirectConnection(unittest.TestCase):
 
         # A Connection succeeds no matter the read preference
         for kwargs in [
-            {'read_preference': ReadPreference.PRIMARY},
-            {'read_preference': ReadPreference.PRIMARY_PREFERRED},
-            {'read_preference': ReadPreference.SECONDARY},
-            {'read_preference': ReadPreference.SECONDARY_PREFERRED},
-            {'read_preference': ReadPreference.NEAREST},
+            {'read_preference': PRIMARY},
+            {'read_preference': PRIMARY_PREFERRED},
+            {'read_preference': SECONDARY},
+            {'read_preference': SECONDARY_PREFERRED},
+            {'read_preference': NEAREST},
             {'slave_okay': True}
         ]:
             conn = yield motor.Op(motor.MotorClient(
@@ -91,7 +104,7 @@ class MotorTestDirectConnection(unittest.TestCase):
 
             # Direct connection to secondary can be queried with any read pref
             # but PRIMARY
-            if kwargs.get('read_preference') != ReadPreference.PRIMARY:
+            if kwargs.get('read_preference') != PRIMARY:
                 self.assertTrue((
                     yield motor.Op(conn.pymongo_test.test.find_one)))
             else:
@@ -135,6 +148,9 @@ class MotorTestDirectConnection(unittest.TestCase):
 
 
 class MotorTestPassiveAndHidden(unittest.TestCase):
+    # Prevent Nose from automatically running this test
+    __test__ = False
+
     def setUp(self):
         super(MotorTestPassiveAndHidden, self).setUp()
         members = [{},
@@ -149,42 +165,20 @@ class MotorTestPassiveAndHidden(unittest.TestCase):
     @async_test_engine(timeout_sec=60)
     def test_passive_and_hidden(self, done):
         loop = IOLoop.instance()
-        self.c = motor.MotorReplicaSetClient(
-            self.seed, replicaSet=self.name)
+        self.c = motor.MotorReplicaSetClient(self.seed, replicaSet=self.name)
         self.c.open_sync()
-        db = self.c.pymongo_test
-        w = len(self.c.secondaries) + 1
-        yield motor.Op(db.test.remove, w=w)
-        yield motor.Op(db.test.insert, {'foo': 'bar'}, w=w)
-        db.read_preference = ReadPreference.SECONDARY
 
         passives = ha_tools.get_passives()
         passives = [_partition_node(member) for member in passives]
-        hidden = ha_tools.get_hidden_members()
-        hidden = [_partition_node(member) for member in hidden]
         self.assertEqual(self.c.secondaries, set(passives))
 
-        for mode in (
-            ReadPreference.SECONDARY, ReadPreference.SECONDARY_PREFERRED
-        ):
-            db.read_preference = mode
-            for _ in xrange(10):
-                cursor = db.test.find()
-                yield cursor.fetch_next
-                self.assertTrue(
-                    cursor.delegate._Cursor__connection_id in passives)
-                self.assertTrue(
-                    cursor.delegate._Cursor__connection_id not in hidden)
+        for mode in SECONDARY, SECONDARY_PREFERRED:
+            yield motor.Op(assertReadFromAll, self, self.c, passives, mode)
 
         ha_tools.kill_members(ha_tools.get_passives(), 2)
         yield gen.Task(loop.add_timeout, time.time() + 2 * MONITOR_INTERVAL)
-        db.read_preference = ReadPreference.SECONDARY_PREFERRED
-
-        for _ in xrange(10):
-            cursor = db.test.find()
-            yield cursor.fetch_next
-            self.assertEqual(
-                cursor.delegate._Cursor__connection_id, self.c.primary)
+        yield motor.Op(assertReadFrom,
+            self, self.c, self.c.primary, SECONDARY_PREFERRED)
 
         done()
 
@@ -195,6 +189,9 @@ class MotorTestPassiveAndHidden(unittest.TestCase):
 
 
 class MotorTestHealthMonitor(unittest.TestCase):
+    # Prevent Nose from automatically running this test
+    __test__ = False
+
     def setUp(self):
         super(MotorTestHealthMonitor, self).setUp()
         res = ha_tools.start_replica_set([{}, {}, {}])
@@ -277,6 +274,9 @@ class MotorTestHealthMonitor(unittest.TestCase):
 
 
 class MotorTestWritesWithFailover(unittest.TestCase):
+    # Prevent Nose from automatically running this test
+    __test__ = False
+
     def setUp(self):
         super(MotorTestWritesWithFailover, self).setUp()
         res = ha_tools.start_replica_set([{}, {}, {}])
@@ -320,6 +320,9 @@ class MotorTestWritesWithFailover(unittest.TestCase):
 
 
 class MotorTestReadWithFailover(unittest.TestCase):
+    # Prevent Nose from automatically running this test
+    __test__ = False
+
     def setUp(self):
         super(MotorTestReadWithFailover, self).setUp()
         res = ha_tools.start_replica_set([{}, {}, {}])
@@ -339,7 +342,7 @@ class MotorTestReadWithFailover(unittest.TestCase):
         yield motor.Op(db.test.insert, [{'foo': i} for i in xrange(10)], w=w)
         yield AssertEqual(10, db.test.count)
 
-        db.read_preference = ReadPreference.SECONDARY
+        db.read_preference = SECONDARY
         cursor = db.test.find().batch_size(5)
         yield cursor.fetch_next
         self.assertEqual(5, cursor.delegate._Cursor__retrieved)
@@ -358,6 +361,9 @@ class MotorTestReadWithFailover(unittest.TestCase):
 
 
 class MotorTestReadPreference(unittest.TestCase):
+    # Prevent Nose from automatically running this test
+    __test__ = False
+
     def setUp(self):
         super(MotorTestReadPreference, self).setUp()
         members = [
@@ -487,13 +493,6 @@ class MotorTestReadPreference(unittest.TestCase):
         def unpartition_node(node):
             host, port = node
             return '%s:%s' % (host, port)
-
-        # To make the code terser, copy modes and hosts into local scope
-        PRIMARY = ReadPreference.PRIMARY
-        PRIMARY_PREFERRED = ReadPreference.PRIMARY_PREFERRED
-        SECONDARY = ReadPreference.SECONDARY
-        SECONDARY_PREFERRED = ReadPreference.SECONDARY_PREFERRED
-        NEAREST = ReadPreference.NEAREST
 
         primary = self.primary
         secondary = self.secondary
@@ -707,6 +706,9 @@ class MotorTestReadPreference(unittest.TestCase):
 
 
 class MotorTestReplicaSetAuth(unittest.TestCase):
+    # Prevent Nose from automatically running this test
+    __test__ = False
+
     def setUp(self):
         super(MotorTestReplicaSetAuth, self).setUp()
         members = [
@@ -754,7 +756,7 @@ class MotorTestReplicaSetAuth(unittest.TestCase):
         self.assertTrue(res)
 
         # And still query.
-        db.read_preference = ReadPreference.PRIMARY_PREFERRED
+        db.read_preference = PRIMARY_PREFERRED
         res = yield motor.Op(db.foo.find_one)
         self.assertEqual('bar', res['foo'])
         c.close()
@@ -766,6 +768,9 @@ class MotorTestReplicaSetAuth(unittest.TestCase):
 
 
 class MotorTestMongosHighAvailability(unittest.TestCase):
+    # Prevent Nose from automatically running this test
+    __test__ = False
+
     def setUp(self):
         super(MotorTestMongosHighAvailability, self).setUp()
         self.seed_list = ha_tools.create_sharded_cluster()
