@@ -48,7 +48,7 @@ from pymongo import (common,
                      helpers,
                      message,
                      pool,
-                     uri_parser)
+                     uri_parser, thread_util)
 from pymongo.cursor_manager import CursorManager
 from pymongo.errors import (AutoReconnect,
                             ConfigurationError,
@@ -238,7 +238,7 @@ class MongoClient(common.BaseObject):
 
         if not self.pool_class:
             if options.get('use_greenlets', False):
-                if not pool.have_greenlet:
+                if not thread_util.have_greenlet:
                     raise ConfigurationError(
                         "The greenlet module is not available. "
                         "Install the greenlet package from PyPI."
@@ -252,8 +252,7 @@ class MongoClient(common.BaseObject):
             self.__max_pool_size,
             self.__net_timeout,
             self.__conn_timeout,
-            self.__use_ssl
-        )
+            self.__use_ssl)
 
         self.__document_class = document_class
         self.__tz_aware = common.validate_boolean('tz_aware', tz_aware)
