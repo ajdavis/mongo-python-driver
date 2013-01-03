@@ -95,7 +95,7 @@ class SocketInfo(object):
 # http://bugs.jython.org/issue1057
 class Pool:
     def __init__(self, pair, max_size, net_timeout, conn_timeout, use_ssl,
-                 use_greenlets):
+                 use_greenlets=False):
         """
         :Parameters:
           - `pair`: a (hostname, port) tuple
@@ -420,6 +420,12 @@ class Pool:
         for request_sock in self._tid_to_sock.values():
             if request_sock not in (NO_REQUEST, NO_SOCKET_YET):
                 request_sock.close()
+
+
+class GreenletPool(Pool):
+    def __init__(self, *args, **kwargs):
+        kwargs['use_greenlets'] = True
+        Pool.__init__(self, *args, **kwargs)
 
 
 class Request(object):
