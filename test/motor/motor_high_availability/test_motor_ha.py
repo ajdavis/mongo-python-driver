@@ -37,9 +37,9 @@ from test.motor import async_test_engine, AssertEqual, AssertRaises
 Monitor._refresh_interval = MONITOR_INTERVAL = 0.5
 
 
-class MotorTestSecondaryConnection(unittest.TestCase):
+class MotorTestDirectConnection(unittest.TestCase):
     def setUp(self):
-        super(MotorTestSecondaryConnection, self).setUp()
+        super(MotorTestDirectConnection, self).setUp()
         members = [{}, {}, {'arbiterOnly': True}]
         res = ha_tools.start_replica_set(members)
         self.seed, self.name = res
@@ -52,7 +52,7 @@ class MotorTestSecondaryConnection(unittest.TestCase):
         db = self.c.pymongo_test
         yield motor.Op(db.test.remove, {}, w=len(self.c.secondaries))
 
-        # Force replication...
+        # Wait for replication...
         w = len(self.c.secondaries) + 1
         yield motor.Op(db.test.insert, {'foo': 'bar'}, w=w)
 
@@ -62,62 +62,76 @@ class MotorTestSecondaryConnection(unittest.TestCase):
         (secondary_host,
          secondary_port) = ha_tools.get_secondaries()[0].split(':')
         secondary_port = int(secondary_port)
+        arbiter_host, arbiter_port = ha_tools.get_arbiters()[0].split(':')
+        arbiter_port = int(arbiter_port)
 
-        self.assertTrue(motor.MotorClient(
-            primary_host, primary_port
-        ).open_sync().is_primary)
-
-        self.assertTrue(motor.MotorClient(
-            primary_host, primary_port,
-            read_preference=ReadPreference.PRIMARY_PREFERRED
-        ).open_sync().is_primary)
-
-        self.assertTrue(motor.MotorClient(
-            primary_host, primary_port,
-            read_preference=ReadPreference.SECONDARY_PREFERRED
-        ).open_sync().is_primary)
-
-        self.assertTrue(motor.MotorClient(
-            primary_host, primary_port,
-            read_preference=ReadPreference.NEAREST
-        ).open_sync().is_primary)
-
-        self.assertTrue(motor.MotorClient(
-            primary_host, primary_port,
-            read_preference=ReadPreference.SECONDARY
-        ).open_sync().is_primary)
-
-        # TODO: update according to recent test_ha changes
-
+        # A Connection succeeds no matter the read preference
         for kwargs in [
+            {'read_preference': ReadPreference.PRIMARY},
             {'read_preference': ReadPreference.PRIMARY_PREFERRED},
             {'read_preference': ReadPreference.SECONDARY},
             {'read_preference': ReadPreference.SECONDARY_PREFERRED},
             {'read_preference': ReadPreference.NEAREST},
-            {'slave_okay': True},
+            {'slave_okay': True}
         ]:
-            conn = motor.MotorClient(secondary_host,
-                              secondary_port,
-                              **kwargs).open_sync()
+            conn = yield motor.Op(motor.MotorClient(
+                primary_host, primary_port, **kwargs).open)
+            self.assertEqual(primary_host, conn.host)
+            self.assertEqual(primary_port, conn.port)
+            self.assertTrue(conn.is_primary)
+
+            # Direct connection to primary can be queried with any read pref
+            self.assertTrue((yield motor.Op(conn.pymongo_test.test.find_one)))
+
+            conn = yield motor.Op(motor.MotorClient(
+                secondary_host, secondary_port, **kwargs).open)
             self.assertEqual(secondary_host, conn.host)
             self.assertEqual(secondary_port, conn.port)
             self.assertFalse(conn.is_primary)
-            doc = yield motor.Op(conn.pymongo_test.test.find_one)
-            self.assertTrue(doc)
 
-        # Test direct connection to an arbiter
-        secondary_host = ha_tools.get_arbiters()[0]
-        host, port = ha_tools.get_arbiters()[0].split(':')
-        port = int(port)
-        conn = motor.MotorClient(host, port).open_sync()
-        self.assertEqual(host, conn.host)
-        self.assertEqual(port, conn.port)
+            # Direct connection to secondary can be queried with any read pref
+            # but PRIMARY
+            if kwargs.get('read_preference') != ReadPreference.PRIMARY:
+                self.assertTrue((
+                    yield motor.Op(conn.pymongo_test.test.find_one)))
+            else:
+                yield AssertRaises(
+                    AutoReconnect, conn.pymongo_test.test.find_one)
+
+            # Since an attempt at an acknowledged write to a secondary from a
+            # direct connection raises AutoReconnect('not master'), MotorClient
+            # should do the same for unacknowledged writes.
+            try:
+                yield motor.Op(conn.pymongo_test.test.insert, {}, safe=False)
+            except AutoReconnect, e:
+                self.assertEqual('not master', e.args[0])
+            else:
+                self.fail(
+                    'Unacknowledged insert into secondary connection %s should'
+                    'have raised exception' % conn)
+
+            # Test direct connection to an arbiter
+            conn = yield motor.Op(motor.MotorClient(
+                arbiter_host, arbiter_port, **kwargs).open)
+            self.assertEqual(arbiter_host, conn.host)
+            self.assertEqual(arbiter_port, conn.port)
+            self.assertFalse(conn.is_primary)
+
+            # See explanation above
+            try:
+                yield motor.Op(conn.pymongo_test.test.insert, {}, safe=False)
+            except AutoReconnect, e:
+                self.assertEqual('not master', e.message)
+            else:
+                self.fail(
+                    'Unacknowledged insert into arbiter connection %s should'
+                    'have raised exception' % conn)
         done()
 
     def tearDown(self):
         ha_tools.kill_all_members()
         self.c.close()
-        super(MotorTestSecondaryConnection, self).tearDown()
+        super(MotorTestDirectConnection, self).tearDown()
 
 
 class MotorTestPassiveAndHidden(unittest.TestCase):
@@ -798,6 +812,7 @@ class MotorTestMongosHighAvailability(unittest.TestCase):
         self.conn.disconnect() # Force reconnect, things have happened ....
         self.conn.drop_database(self.dbname)
         ha_tools.kill_all_members()
+
 
 if __name__ == '__main__':
     unittest.main()
