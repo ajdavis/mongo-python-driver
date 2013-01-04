@@ -31,6 +31,7 @@ from pymongo.mongo_replica_set_client import (
 from pymongo.errors import AutoReconnect, OperationFailure
 
 import motor
+from test.utils import one
 from test.motor import async_test_engine, AssertEqual, AssertRaises
 from test.motor.motor_high_availability.test_motor_ha_utils import (
     assertReadFrom, assertReadFromAll)
@@ -186,6 +187,133 @@ class MotorTestPassiveAndHidden(unittest.TestCase):
         ha_tools.kill_all_members()
         self.c.close()
         super(MotorTestPassiveAndHidden, self).tearDown()
+
+
+class MotorTestMonitorRemovesRecoveringMember(unittest.TestCase):
+    # Members in STARTUP2 or RECOVERING states are shown in the primary's
+    # isMaster response, but aren't secondaries and shouldn't be read from.
+    # Verify that if a secondary goes into RECOVERING mode, the Monitor removes
+    # it from the set of readers.
+
+    # Prevent Nose from automatically running this test
+    __test__ = False
+
+    def setUp(self):
+        members = [{}, {'priority': 0}, {'priority': 0}]
+        res = ha_tools.start_replica_set(members)
+        self.seed, self.name = res
+
+    @async_test_engine(timeout_sec=60)
+    def test_monitor_removes_recovering_member(self, done):
+        self.c = motor.MotorReplicaSetClient(
+            self.seed, replicaSet=self.name).open_sync()
+
+        secondaries = ha_tools.get_secondaries()
+
+        for mode in SECONDARY, SECONDARY_PREFERRED:
+            partitioned_secondaries = [_partition_node(s) for s in secondaries]
+            yield motor.Op(assertReadFromAll,
+                self, self.c, partitioned_secondaries, mode)
+
+        secondary, recovering_secondary = secondaries
+        ha_tools.set_maintenance(recovering_secondary, True)
+        yield gen.Task(
+            IOLoop.instance().add_timeout, time.time() + 2 * MONITOR_INTERVAL)
+
+        for mode in SECONDARY, SECONDARY_PREFERRED:
+            # Don't read from recovering member
+            yield motor.Op(assertReadFrom,
+                self, self.c, _partition_node(secondary), mode)
+
+        done()
+
+    def tearDown(self):
+        self.c.close()
+        ha_tools.kill_all_members()
+
+
+class MotorTestTriggeredRefresh(unittest.TestCase):
+    # Verify that if a secondary goes into RECOVERING mode or if the primary
+    # changes, the next exception triggers an immediate refresh.
+
+    # Prevent Nose from automatically running this test
+    __test__ = False
+
+    def setUp(self):
+        members = [{}, {}]
+        res = ha_tools.start_replica_set(members)
+        self.seed, self.name = res
+
+        # Disable periodic refresh
+        Monitor._refresh_interval = 1e6
+
+    @async_test_engine(timeout_sec=60)
+    def test_recovering_member_triggers_refresh(self, done):
+        # To test that find_one() and count() trigger immediate refreshes,
+        # we'll create a separate connection for each
+        self.c_find_one, self.c_count = [
+            motor.MotorReplicaSetClient(
+                self.seed, replicaSet=self.name, read_preference=SECONDARY
+            ).open_sync() for _ in xrange(2)]
+
+        # We've started the primary and one secondary
+        primary = ha_tools.get_primary()
+        secondary = ha_tools.get_secondaries()[0]
+
+        # Pre-condition: just make sure they all connected OK
+        for c in self.c_find_one, self.c_count:
+            self.assertEqual(one(c.secondaries), _partition_node(secondary))
+
+        ha_tools.set_maintenance(secondary, True)
+
+        # Trigger a refresh in various ways
+        yield AssertRaises(AutoReconnect, self.c_find_one.test.test.find_one)
+        yield AssertRaises(AutoReconnect, self.c_count.test.test.count)
+
+        # Wait for the immediate refresh to complete - we're not waiting for
+        # the periodic refresh, which has been disabled
+        yield gen.Task(
+            IOLoop.instance().add_timeout, time.time() + 1)
+
+        for c in self.c_find_one, self.c_count:
+            self.assertFalse(c.secondaries)
+            self.assertEqual(_partition_node(primary), c.primary)
+
+        done()
+
+    @async_test_engine(timeout_sec=60)
+    def test_stepdown_triggers_refresh(self, done):
+        c_find_one = motor.MotorReplicaSetClient(
+            self.seed, replicaSet=self.name).open_sync()
+
+        # We've started the primary and one secondary
+        primary = ha_tools.get_primary()
+        secondary = ha_tools.get_secondaries()[0]
+        self.assertEqual(
+            one(c_find_one.secondaries), _partition_node(secondary))
+
+        ha_tools.stepdown_primary()
+
+        # Make sure the stepdown completes
+        yield gen.Task(IOLoop.instance().add_timeout, time.time() + 1)
+
+        # Trigger a refresh
+        yield AssertRaises(AutoReconnect, c_find_one.test.test.find_one)
+
+        # Wait for the immediate refresh to complete - we're not waiting for
+        # the periodic refresh, which has been disabled
+        yield gen.Task(IOLoop.instance().add_timeout, time.time() + 1)
+
+        # We've detected the stepdown
+        self.assertTrue(
+            not c_find_one.primary
+            or primary != _partition_node(c_find_one.primary))
+
+        done()
+
+    def tearDown(self):
+        Monitor._refresh_interval = MONITOR_INTERVAL
+        ha_tools.kill_all_members()
 
 
 class MotorTestHealthMonitor(unittest.TestCase):
