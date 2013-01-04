@@ -993,5 +993,52 @@ class MotorTestAlive(unittest.TestCase):
         ha_tools.kill_all_members()
 
 
+class MotorTestMongosHighAvailability(unittest.TestCase):
+    # Prevent Nose from automatically running this test
+    __test__ = False
+
+    def setUp(self):
+        self.seed_list = ha_tools.create_sharded_cluster()
+
+    @async_test_engine(timeout_sec=60)
+    def test_mongos_ha(self, done):
+        dbname = 'pymongo_mongos_ha'
+        c = motor.MotorClient(self.seed_list).open_sync()
+        yield motor.Op(c.drop_database, dbname)
+        coll = c[dbname].test
+        yield motor.Op(coll.insert, {'foo': 'bar'})
+
+        first = '%s:%d' % (c.host, c.port)
+        ha_tools.kill_mongos(first)
+        # Fail first attempt
+        yield AssertRaises(AutoReconnect, coll.count)
+        # Find new mongos
+        yield AssertEqual(1, coll.count)
+
+        second = '%s:%d' % (c.host, c.port)
+        self.assertNotEqual(first, second)
+        ha_tools.kill_mongos(second)
+        # Fail first attempt
+        yield AssertRaises(AutoReconnect, coll.count)
+        # Find new mongos
+        yield AssertEqual(1, coll.count)
+
+        third = '%s:%d' % (c.host, c.port)
+        self.assertNotEqual(second, third)
+        ha_tools.kill_mongos(third)
+        # Fail first attempt
+        yield AssertRaises(AutoReconnect, coll.count)
+
+        # We've killed all three, restart one.
+        ha_tools.restart_mongos(first)
+
+        # Find new mongos
+        yield AssertEqual(1, coll.count)
+        done()
+
+    def tearDown(self):
+        ha_tools.kill_all_members()
+
+
 if __name__ == '__main__':
     unittest.main()
