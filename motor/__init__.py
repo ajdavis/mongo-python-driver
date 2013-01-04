@@ -674,6 +674,7 @@ class MotorClientBase(MotorOpenable, MotorBase):
     """
     database_names = AsyncRead()
     server_info    = AsyncRead()
+    alive          = AsyncRead()
     close_cursor   = AsyncCommand()
     copy_database  = AsyncCommand()
     drop_database  = AsyncCommand().unwrap('MotorDatabase')

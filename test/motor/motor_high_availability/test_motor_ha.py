@@ -32,7 +32,8 @@ from pymongo.errors import AutoReconnect, OperationFailure
 
 import motor
 from test.utils import one
-from test.motor import async_test_engine, AssertEqual, AssertRaises
+from test.motor import (
+    async_test_engine, AssertEqual, AssertRaises, AssertTrue, AssertFalse)
 from test.motor.motor_high_availability.test_motor_ha_utils import (
     assertReadFrom, assertReadFromAll)
 
@@ -944,6 +945,51 @@ class MotorTestMongosHighAvailability(unittest.TestCase):
     def tearDown(self):
         self.conn.disconnect() # Force reconnect, things have happened ....
         self.conn.drop_database(self.dbname)
+        ha_tools.kill_all_members()
+
+
+class MotorTestAlive(unittest.TestCase):
+    # Prevent Nose from automatically running this test
+    __test__ = False
+
+    def setUp(self):
+        members = [{}, {}]
+        self.seed, self.name = ha_tools.start_replica_set(members)
+
+    @async_test_engine(timeout_sec=60)
+    def test_alive(self, done):
+        primary = ha_tools.get_primary()
+        secondary = ha_tools.get_random_secondary()
+        primary_cx = motor.MotorClient(primary).open_sync()
+        secondary_cx = motor.MotorClient(secondary).open_sync()
+        rsc = motor.MotorReplicaSetClient(
+            self.seed, replicaSet=self.name).open_sync()
+        loop = IOLoop.instance()
+
+        try:
+            yield AssertTrue(primary_cx.alive)
+            yield AssertTrue(secondary_cx.alive)
+            yield AssertTrue(rsc.alive)
+
+            ha_tools.kill_primary()
+            yield gen.Task(loop.add_timeout, time.time() + 0.5)
+
+            yield AssertFalse(primary_cx.alive)
+            yield AssertTrue(secondary_cx.alive)
+            yield AssertFalse(rsc.alive)
+
+            ha_tools.kill_members([secondary], 2)
+            yield gen.Task(loop.add_timeout, time.time() + 0.5)
+
+            yield AssertFalse(primary_cx.alive)
+            yield AssertFalse(secondary_cx.alive)
+            yield AssertFalse(rsc.alive)
+        finally:
+            rsc.close()
+
+        done()
+
+    def tearDown(self):
         ha_tools.kill_all_members()
 
 

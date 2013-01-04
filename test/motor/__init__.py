@@ -163,6 +163,16 @@ class AssertEqual(gen.Task):
         return result
 
 
+class AssertTrue(AssertEqual):
+    def __init__(self, func, *args, **kwargs):
+        super(AssertTrue, self).__init__(True, func, *args, **kwargs)
+
+
+class AssertFalse(AssertEqual):
+    def __init__(self, func, *args, **kwargs):
+        super(AssertFalse, self).__init__(False, func, *args, **kwargs)
+
+
 class MotorTest(unittest.TestCase):
     longMessage = True # Used by unittest.TestCase
     ssl = False # If True, connect with SSL, skip if mongod isn't SSL
