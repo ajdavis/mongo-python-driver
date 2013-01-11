@@ -218,10 +218,10 @@ class MotorSocket(object):
         return self.stream.socket.fileno()
 
 
-class MotorPool(pymongo.pool.GreenletPool):
+class MotorPool(pymongo.pool.Pool):
     """A simple connection pool of MotorSockets.
 
-    Note this inherits from GreenletPool so that when PyMongo internally calls
+    Note this sets use_greenlets=True so that when PyMongo internally calls
     start_request, e.g. in Database.authenticate() or
     MongoClient.copy_database(), this pool assigns a socket to the current
     greenlet for the duration of the method. Request semantics are not exposed
@@ -229,7 +229,8 @@ class MotorPool(pymongo.pool.GreenletPool):
     """
     def __init__(self, io_loop, *args, **kwargs):
         self.io_loop = io_loop
-        pymongo.pool.GreenletPool.__init__(self, *args, **kwargs)
+        kwargs['use_greenlets'] = True
+        pymongo.pool.Pool.__init__(self, *args, **kwargs)
 
     def create_connection(self, pair):
         """Copy of BasePool.connect()
