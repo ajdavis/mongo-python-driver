@@ -157,6 +157,7 @@ if __name__ == '__main__':
         'pymongo.master_slave_connection',
         'pymongo.database',
         'pymongo.pool',
+        'pymongo.thread_util',
         'gridfs',
         'gridfs.grid_file',
     ]:

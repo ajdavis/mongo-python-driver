@@ -39,8 +39,8 @@ from pymongo.common import SAFE_OPTIONS
 # So that synchronous unittests can import these names from Synchro,
 # thinking it's really pymongo
 from pymongo import (
-    ASCENDING, DESCENDING, GEO2D, GEOHAYSTACK, ReadPreference,
-    ALL, helpers, OFF, SLOW_ONLY, pool
+    ASCENDING, DESCENDING, GEO2D, GEOHAYSTACK, TEXT, ReadPreference,
+    ALL, helpers, OFF, SLOW_ONLY, pool, thread_util
 )
 
 from gridfs.grid_file import DEFAULT_CHUNK_SIZE, _SEEK_CUR, _SEEK_END
@@ -507,6 +507,7 @@ class Cursor(Synchro):
     _Cursor__tag_sets          = SynchroProperty()
     _Cursor__fields            = SynchroProperty()
     _Cursor__spec              = SynchroProperty()
+    _Cursor__hint              = SynchroProperty()
     _Cursor__secondary_acceptable_latency_ms = SynchroProperty()
 
 
