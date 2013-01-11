@@ -468,7 +468,7 @@ class MongoReplicaSetClient(common.BaseObject):
         # Start the monitor after we know the configuration is correct.
         if monitor_class:
             self.__monitor = monitor_class(self)
-        elif self.__opts.get('use_greenlets', False):
+        elif self.__use_greenlets:
             self.__monitor = MonitorGreenlet(self)
         else:
             self.__monitor = MonitorThread(self)
@@ -777,7 +777,7 @@ class MongoReplicaSetClient(common.BaseObject):
         self.__threadlocal.host = None
 
     def __reset_pinned_hosts(self):
-        if self.__opts.get('use_greenlets', False):
+        if self.__use_greenlets:
             self.__threadlocal = gevent_local()
         else:
             self.__threadlocal = threading.local()
