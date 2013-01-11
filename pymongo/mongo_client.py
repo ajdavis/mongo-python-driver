@@ -48,7 +48,8 @@ from pymongo import (common,
                      helpers,
                      message,
                      pool,
-                     uri_parser, thread_util)
+                     thread_util,
+                     uri_parser)
 from pymongo.cursor_manager import CursorManager
 from pymongo.errors import (AutoReconnect,
                             ConfigurationError,
