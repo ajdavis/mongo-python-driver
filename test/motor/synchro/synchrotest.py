@@ -35,8 +35,6 @@ from nose.plugins.manager import PluginManager
 from nose.plugins.skip import Skip
 from nose.selector import Selector
 
-from test.motor.puritanical import PuritanicalIOLoop
-
 excluded_modules = [
     'test.motor',
 
@@ -148,8 +146,6 @@ class SynchroNosePlugin(Plugin):
 
 
 if __name__ == '__main__':
-    PuritanicalIOLoop().install()
-
     # Monkey-patch all pymongo's unittests so they think Synchro is the
     # real PyMongo
     sys.modules['pymongo'] = synchro

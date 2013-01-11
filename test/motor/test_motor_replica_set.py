@@ -17,7 +17,6 @@
 import unittest
 
 import motor
-from test.motor import puritanical
 
 if not motor.requirements_satisfied:
     from nose.plugins.skip import SkipTest
@@ -102,7 +101,7 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
         # Check that we can create a MotorReplicaSetClient with a custom
         # IOLoop, then call open_sync(), which uses a new loop, and the custom
         # loop is restored.
-        loop = puritanical.PuritanicalIOLoop()
+        loop = ioloop.IOLoop()
         cx = motor.MotorReplicaSetClient(
             '%s:%s' % (host, port), replicaSet=self.name, io_loop=loop)
         self.assertEqual(cx, cx.open_sync())
@@ -137,7 +136,7 @@ class MotorReplicaSetTest(MotorTest, TestConnectionReplicaSetBase):
                 '%s:%s' % (host, port), replicaSet=self.name, io_loop='foo')
         )
 
-        loop = puritanical.PuritanicalIOLoop()
+        loop = ioloop.IOLoop()
 
         @async_test_engine(io_loop=loop)
         def test(self, done):
