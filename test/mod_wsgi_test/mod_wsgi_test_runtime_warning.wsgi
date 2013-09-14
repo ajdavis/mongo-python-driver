@@ -17,7 +17,9 @@ interpreter.
 """
 
 import os
+import re
 import sys
+import uuid
 
 this_path = os.path.dirname(os.path.join(os.getcwd(), __file__))
 
@@ -41,7 +43,12 @@ import warnings
 
 def application(environ, start_response):
     warnings.simplefilter('always')
-    bson.BSON.encode({'ts': bson.Timestamp(0, 0)})
+    bson.BSON.encode({
+        'ts': bson.Timestamp(0, 0),
+        're': re.compile(''),
+        'u': uuid.uuid4(),
+    })
+
     pid = os.getpid()
     output = 'python %s, mod_wsgi %s, pymongo %s\nat %s\nPID %s\n' % (
         sys.version, mod_wsgi_version, pymongo.version, repository_path,
