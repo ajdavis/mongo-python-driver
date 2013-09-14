@@ -44,6 +44,7 @@ import warnings
 def application(environ, start_response):
     warnings.simplefilter('always')
     bson.BSON.encode({
+        'oid': bson.ObjectId(),
         'ts': bson.Timestamp(0, 0),
         're': re.compile(''),
         'u': uuid.uuid4(),
