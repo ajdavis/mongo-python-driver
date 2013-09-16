@@ -40,16 +40,20 @@ except ImportError:
 
 import warnings
 
+data = ""
+for i in range(1000):
+    data += bson.BSON.encode({
+        'oid': bson.ObjectId(),
+        'ts': bson.Timestamp(0, 0),
+        're': re.compile(''),
+        'u': uuid.uuid4(),
+    })
+
 
 def application(environ, start_response):
     warnings.simplefilter('always')
-    for i in range(1000):
-        bson.BSON.encode({
-            'oid': bson.ObjectId(),
-            'ts': bson.Timestamp(0, 0),
-            're': re.compile(''),
-            'u': uuid.uuid4(),
-        })
+
+    bson.decode_all(data)
 
     pid = os.getpid()
     output = 'python %s, mod_wsgi %s, pymongo %s\nat %s\nPID %s\n' % (
