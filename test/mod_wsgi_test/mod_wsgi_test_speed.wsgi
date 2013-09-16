@@ -43,12 +43,13 @@ import warnings
 
 def application(environ, start_response):
     warnings.simplefilter('always')
-    bson.BSON.encode({
-        'oid': bson.ObjectId(),
-        'ts': bson.Timestamp(0, 0),
-        're': re.compile(''),
-        'u': uuid.uuid4(),
-    })
+    for i in range(1000):
+        bson.BSON.encode({
+            'oid': bson.ObjectId(),
+            'ts': bson.Timestamp(0, 0),
+            're': re.compile(''),
+            'u': uuid.uuid4(),
+        })
 
     pid = os.getpid()
     output = 'python %s, mod_wsgi %s, pymongo %s\nat %s\nPID %s\n' % (
