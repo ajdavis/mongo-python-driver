@@ -1,0 +1,51 @@
+# Copyright 2013 MongoDB, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Connect a MongoReplicaSetClient from a WSGI script so we can count its
+connections.
+"""
+
+import os
+import sys
+
+this_path = os.path.dirname(os.path.join(os.getcwd(), __file__))
+
+# Location of PyMongo checkout
+repository_path = os.path.normpath(os.path.join(this_path, '..', '..'))
+sys.path.insert(0, repository_path)
+
+import pymongo
+from pymongo.read_preferences import ReadPreference
+
+try:
+    from mod_wsgi import version as mod_wsgi_version
+except ImportError:
+    mod_wsgi_version = None
+
+# Read equally from all members.
+client = pymongo.MongoReplicaSetClient(
+    replicaSet='r', read_preference=ReadPreference.NEAREST,
+    secondary_acceptable_latency_ms=10000)
+
+
+def application(environ, start_response):
+    assert 200 == len(list(client.test.test.find()))
+    pid = os.getpid()
+    output = 'python %s, mod_wsgi %s, pymongo %s\nat %s\nPID %s\n' % (
+        sys.version, mod_wsgi_version, pymongo.version, repository_path,
+        pid)
+
+    response_headers = [('Content-Length', str(len(output)))]
+    start_response('200 OK', response_headers)
+    return [output]
