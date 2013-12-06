@@ -24,7 +24,7 @@ from pymongo import (common,
                      message)
 from pymongo.cursor import Cursor
 from pymongo.errors import InvalidName
-from pymongo.helpers import _check_command_response
+from pymongo.helpers import _check_command_response, _set_command_wc
 from pymongo.message import _INSERT, _UPDATE, _DELETE
 
 
@@ -361,8 +361,9 @@ class Collection(common.BaseObject):
         if client.max_wire_version > 1 and safe:
             # Insert command
             command = SON([('insert', self.name),
-                           ('ordered', not continue_on_error),
-                           ('writeConcern', options)])
+                           ('ordered', not continue_on_error)])
+
+            _set_command_wc(command, options)
 
             results = message._do_batched_write_command(
                     self.database.name + ".$cmd", _INSERT, command,
@@ -511,8 +512,8 @@ class Collection(common.BaseObject):
         client = self.database.connection
         if client.max_wire_version > 1 and safe:
             # Update command
-            command = SON([('update', self.name),
-                           ('writeConcern', options)])
+            command = SON([('update', self.name)])
+            _set_command_wc(command, options)
 
             docs = [SON([('q', spec), ('u', document),
                          ('multi', multi), ('upsert', upsert)])]
@@ -625,8 +626,8 @@ class Collection(common.BaseObject):
         client = self.database.connection
         if client.max_wire_version > 1 and safe:
             # Delete command
-            command = SON([('delete', self.name),
-                           ('writeConcern', options)])
+            command = SON([('delete', self.name)])
+            _set_command_wc(command, options)
 
             docs = [SON([('q', spec_or_id), ('limit', int(not multi))])]
 

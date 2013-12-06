@@ -72,6 +72,17 @@ def _index_document(index_list):
     return index
 
 
+def _set_command_wc(command, options):
+    """Set a write command's write concern.
+
+     :Parameters:
+       - `command`: The SON for an insert, update, or remove command.
+       - `options`: A dict with the write concern, e.g. {} or {'w': 2}.
+    """
+    if options not in ({}, {'w': 1}):
+        command['writeConcern'] = options
+
+
 def _unpack_response(response, cursor_id=None, as_class=dict,
                      tz_aware=False, uuid_subtype=OLD_UUID_SUBTYPE,
                      compile_re=True):
