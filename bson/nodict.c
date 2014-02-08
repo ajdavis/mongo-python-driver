@@ -19,34 +19,109 @@
 
 #include "nodict.h"
 
+#define INFLATED 255
+
+/* TODO: Rename BSONDocument or something. */
 typedef struct {
-	PyDictObject dict;
-	void *buffer;
-	long offset;
+	/* Superclass. */
+    PyDictObject dict;
+    /* bytearray from which we're reading */
+    PyObject *array;
+    /* This document's offset into array */
+    bson_off_t offset;
+    /* This document's length */
+    bson_size_t length;
+    /* How many times have we been accessed? */
+    unsigned char n_accesses;
 } NoDict;
 
-// TODO: needed?
+static PyObject *
+NoDict_keys(PyObject *self, PyObject *args)
+{
+	NoDict *nodict = (NoDict *)self;
+	PyObject *py_key = NULL;
+	bson_t bson;
+	bson_iter_t iter;
+	const char *key;
+
+	PyObject *ret = PyList_New(0);
+	if (!ret) {
+		goto error;
+	}
+	if (!bson_init_static(
+			&bson,
+			(bson_uint8_t *)PyByteArray_AsString(nodict->array) + nodict->offset,
+			nodict->length)) {
+		goto error;
+	}
+
+	if (!bson_iter_init(&iter, &bson)) {
+		bson_destroy(&bson);
+		goto error;
+	}
+
+	while (bson_iter_next(&iter)) {
+		key = bson_iter_key(&iter);
+		if (!key) {
+			bson_destroy(&bson);
+			goto error;
+		}
+		py_key = PyString_FromString(key);
+		if (!py_key) {
+			bson_destroy(&bson);
+			goto error;
+		}
+
+		if (PyList_Append(ret, py_key) < 0) {
+			bson_destroy(&bson);
+			goto error;
+		}
+	}
+
+	bson_destroy(&bson);
+	return ret;
+
+error:
+	Py_XDECREF(ret);
+	Py_XDECREF(py_key);
+	return NULL;
+}
+
+/*
+ * TODO:
+ *  - Write an 'inflate' method that creates the dict and releases the buffer,
+ *    sets n_accesses to INFLATED
+ *
+ * For each PyDict_Type method, make a method that:
+ *  - If this is already inflated, call dict method
+ *  - If the method would modify the dict, ensure inflated and call dict method
+ *  - Else increment n_accesses. If > threshhold, inflate, else use libbson
+ *    method
+ */
 static PyMethodDef NoDict_methods[] = {
-    {NULL,	NULL},
+	{"keys",            (PyCFunction)NoDict_keys,         METH_NOARGS,
+	"TODO"},
+	{NULL,	NULL},
 };
 
 static int
 NoDict_init(NoDict *self, PyObject *args, PyObject *kwds)
 {
-    printf("nodict_init\n");
-	// TODO: shouldn't expect any args?
+    /* TODO: shouldn't allow any args */
     if (PyDict_Type.tp_init((PyObject *)self, args, kwds) < 0) {
         return -1;
     }
-    self->buffer = NULL;
+    self->array = NULL;
     self->offset = 0;
+    self->n_accesses = 0;
     return 0;
 }
 
 static void
 NoDict_dealloc(NoDict *self)
 {
-    // TODO???
+	/* Free the array if this is the last NoDict using it. */
+	Py_XDECREF(self->array);
     PyDict_Type.tp_free((PyObject*)self);
 }
 
@@ -88,39 +163,106 @@ static PyTypeObject NoDict_Type = {
     0,                       /* tp_descr_get */
     0,                       /* tp_descr_set */
     0,                       /* tp_dictoffset */
-    PyDict_Type.tp_init,//(initproc)NoDict_init,   /* tp_init */
+    (initproc)NoDict_init,   /* tp_init */
     0,                       /* tp_alloc */
     0,                       /* tp_new */
 };
 
 PyObject *
-_cbson_load_from_memoryview(PyObject *self, PyObject *args) {
-	PyObject *view = NULL;
-	NoDict *nodict = NULL;
-	if (!PyArg_ParseTuple(args, "O", &view))
-		return NULL;
+_cbson_load_from_bytearray(PyObject *self, PyObject *args) {
+    PyObject *ret = NULL;
+    PyObject *array = NULL;
+    PyObject *init_args = NULL;
+    NoDict *nodict = NULL;
+    /* TODO: must this be on the heap? */
+    bson_reader_t *reader;
+    const bson_t *b;
+    bson_bool_t eof = FALSE;
+    bson_off_t offset = 0;
+    bson_size_t buffer_size;
 
-    // TODO: check if memoryview
+    if (!PyArg_ParseTuple(args, "O", &array)) {
+        return NULL;
+    }
+    if (!PyByteArray_Check(array)) {
+    	PyErr_SetString(PyExc_TypeError, "array must be a bytearray.");
+    	goto error;
+    }
+    ret = PyList_New(0);
+    if (!ret) {
+    	goto error;
+    }
+    init_args = PyTuple_New(0); /* TODO: cache this? */
+    if (!init_args) {
+        goto error;
+    }
 
-//	nodict = PyObject_New(NoDict, &NoDict_Type);
-	nodict = (NoDict*)PyType_GenericNew(&NoDict_Type, NULL, NULL);
-//    nodict = (NoDict*)PyObject_Init((PyObject*)nodict, &NoDict_Type);
-    printf("nodict %x\n", nodict);
+    buffer_size = PyByteArray_Size(array);
+    reader = bson_reader_new_from_data(
+    		(bson_uint8_t *)PyByteArray_AsString(array),
+    		buffer_size);
 
-	return (PyObject*)nodict;
+    if (!reader) {
+    	goto error;
+    }
+
+    while (1) {
+    	Py_XDECREF(nodict);
+        /* PyType_GenericNew seems unable to create a dict or a subclass of it. */
+        nodict = (NoDict*)PyObject_Call((PyObject *)&NoDict_Type, init_args, NULL);
+        if (!nodict) {
+            bson_reader_destroy(reader);
+            goto error;
+        }
+
+        nodict->array = array;
+        Py_INCREF(array);
+        nodict->offset = offset;
+ 	    b = bson_reader_read(reader, &eof);
+ 	    if (!b) {
+ 	    	/* Finished. */
+ 	    	nodict->length = buffer_size - nodict->offset;
+ 	    	break;
+ 	    }
+
+ 	    /* Continuing. */
+ 	    offset = bson_reader_tell(reader);
+ 	    nodict->length = offset - nodict->offset;
+ 	    if (PyList_Append(ret, (PyObject*)nodict) < 0) {
+            bson_reader_destroy(reader);
+ 		    goto error;
+ 	    }
+    }
+
+    Py_CLEAR(nodict);
+    bson_reader_destroy(reader);
+
+    if (!eof) {
+       PyErr_SetString(PyExc_ValueError, "Buffer contained invalid BSON.");
+       goto error;
+    }
+
+    return ret;
+
+error:
+	Py_XDECREF(ret);
+    Py_XDECREF(array);
+    Py_XDECREF(nodict);
+    Py_XDECREF(init_args);
+    return NULL;
 }
 
 int
 init_nodict(PyObject* module)
 {
-	NoDict_Type.tp_base = &PyDict_Type;
-	if (PyType_Ready(&NoDict_Type) < 0) {
-		return -1;
-	}
+    NoDict_Type.tp_base = &PyDict_Type;
+    if (PyType_Ready(&NoDict_Type) < 0) {
+        return -1;
+    }
 
     Py_INCREF(&NoDict_Type);
     if (PyModule_AddObject(module, "NoDict", (PyObject *) &NoDict_Type) < 0) {
-    	return -1;
+        return -1;
     }
     return 0;
 }

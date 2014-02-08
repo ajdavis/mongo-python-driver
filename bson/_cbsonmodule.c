@@ -2396,8 +2396,8 @@ static PyMethodDef _CBSONMethods[] = {
      "convert a BSON string to a SON object."},
     {"decode_all", _cbson_decode_all, METH_VARARGS,
      "convert binary data to a sequence of documents."},
-    {"load_from_memoryview", _cbson_load_from_memoryview, METH_VARARGS,
-     "load from a memoryview object."},
+    {"load_from_bytearray", _cbson_load_from_bytearray, METH_VARARGS,
+     "create a NoDict from a bytearray of BSON."},
     {NULL, NULL, 0, NULL}
 };
 
