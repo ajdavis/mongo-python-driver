@@ -206,6 +206,8 @@ http://api.mongodb.org/python/current/installation.html#osx
                                                   "to take advantage of the "
                                                   "extension."))
 
+# TODO: how to include /usr/local/include/libbson-1.0,
+# i.e. pkg-config --cflags --libs libbson-1.0??
 c_ext = Feature(
     "optional C extensions",
     standard=True,
@@ -214,6 +216,7 @@ c_ext = Feature(
                            sources=['bson/_cbsonmodule.c',
                                     'bson/time64.c',
                                     'bson/buffer.c',
+                                    'bson/nodict.c',
                                     'bson/encoding_helpers.c']),
                  Extension('pymongo._cmessage',
                            include_dirs=['bson'],
