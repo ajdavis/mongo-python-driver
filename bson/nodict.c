@@ -23,7 +23,7 @@
 
 /* TODO: Rename BSONDocument or something. */
 typedef struct {
-	/* Superclass. */
+    /* Superclass. */
     PyDictObject dict;
     /* bytearray from which we're reading */
     PyObject *array;
@@ -38,53 +38,53 @@ typedef struct {
 static PyObject *
 NoDict_keys(PyObject *self, PyObject *args)
 {
-	NoDict *nodict = (NoDict *)self;
-	PyObject *py_key = NULL;
-	bson_t bson;
-	bson_iter_t iter;
-	const char *key;
+    NoDict *nodict = (NoDict *)self;
+    PyObject *py_key = NULL;
+    bson_t bson;
+    bson_iter_t iter;
+    const char *key;
 
-	PyObject *ret = PyList_New(0);
-	if (!ret) {
-		goto error;
-	}
-	if (!bson_init_static(
-			&bson,
-			(bson_uint8_t *)PyByteArray_AsString(nodict->array) + nodict->offset,
-			nodict->length)) {
-		goto error;
-	}
+    PyObject *ret = PyList_New(0);
+    if (!ret) {
+        goto error;
+    }
+    if (!bson_init_static(
+            &bson,
+            (bson_uint8_t *)PyByteArray_AsString(nodict->array) + nodict->offset,
+            nodict->length)) {
+        goto error;
+    }
 
-	if (!bson_iter_init(&iter, &bson)) {
-		bson_destroy(&bson);
-		goto error;
-	}
+    if (!bson_iter_init(&iter, &bson)) {
+        bson_destroy(&bson);
+        goto error;
+    }
 
-	while (bson_iter_next(&iter)) {
-		key = bson_iter_key(&iter);
-		if (!key) {
-			bson_destroy(&bson);
-			goto error;
-		}
-		py_key = PyString_FromString(key);
-		if (!py_key) {
-			bson_destroy(&bson);
-			goto error;
-		}
+    while (bson_iter_next(&iter)) {
+        key = bson_iter_key(&iter);
+        if (!key) {
+            bson_destroy(&bson);
+            goto error;
+        }
+        py_key = PyString_FromString(key);
+        if (!py_key) {
+            bson_destroy(&bson);
+            goto error;
+        }
 
-		if (PyList_Append(ret, py_key) < 0) {
-			bson_destroy(&bson);
-			goto error;
-		}
-	}
+        if (PyList_Append(ret, py_key) < 0) {
+            bson_destroy(&bson);
+            goto error;
+        }
+    }
 
-	bson_destroy(&bson);
-	return ret;
+    bson_destroy(&bson);
+    return ret;
 
 error:
-	Py_XDECREF(ret);
-	Py_XDECREF(py_key);
-	return NULL;
+    Py_XDECREF(ret);
+    Py_XDECREF(py_key);
+    return NULL;
 }
 
 /*
@@ -99,9 +99,9 @@ error:
  *    method
  */
 static PyMethodDef NoDict_methods[] = {
-	{"keys",            (PyCFunction)NoDict_keys,         METH_NOARGS,
-	"TODO"},
-	{NULL,	NULL},
+    {"keys",            (PyCFunction)NoDict_keys,         METH_NOARGS,
+    "TODO"},
+    {NULL,	NULL},
 };
 
 static int
@@ -120,8 +120,8 @@ NoDict_init(NoDict *self, PyObject *args, PyObject *kwds)
 static void
 NoDict_dealloc(NoDict *self)
 {
-	/* Free the array if this is the last NoDict using it. */
-	Py_XDECREF(self->array);
+    /* Free the array if this is the last NoDict using it. */
+    Py_XDECREF(self->array);
     PyDict_Type.tp_free((PyObject*)self);
 }
 
@@ -185,12 +185,12 @@ _cbson_load_from_bytearray(PyObject *self, PyObject *args) {
         return NULL;
     }
     if (!PyByteArray_Check(array)) {
-    	PyErr_SetString(PyExc_TypeError, "array must be a bytearray.");
-    	goto error;
+        PyErr_SetString(PyExc_TypeError, "array must be a bytearray.");
+        goto error;
     }
     ret = PyList_New(0);
     if (!ret) {
-    	goto error;
+        goto error;
     }
     init_args = PyTuple_New(0); /* TODO: cache this? */
     if (!init_args) {
@@ -199,15 +199,15 @@ _cbson_load_from_bytearray(PyObject *self, PyObject *args) {
 
     buffer_size = PyByteArray_Size(array);
     reader = bson_reader_new_from_data(
-    		(bson_uint8_t *)PyByteArray_AsString(array),
-    		buffer_size);
+            (bson_uint8_t *)PyByteArray_AsString(array),
+            buffer_size);
 
     if (!reader) {
-    	goto error;
+        goto error;
     }
 
     while (1) {
-    	Py_XDECREF(nodict);
+        Py_XDECREF(nodict);
         /* PyType_GenericNew seems unable to create a dict or a subclass of it. */
         nodict = (NoDict*)PyObject_Call((PyObject *)&NoDict_Type, init_args, NULL);
         if (!nodict) {
@@ -218,20 +218,20 @@ _cbson_load_from_bytearray(PyObject *self, PyObject *args) {
         nodict->array = array;
         Py_INCREF(array);
         nodict->offset = offset;
- 	    b = bson_reader_read(reader, &eof);
- 	    if (!b) {
- 	    	/* Finished. */
- 	    	nodict->length = buffer_size - nodict->offset;
- 	    	break;
- 	    }
+        b = bson_reader_read(reader, &eof);
+        if (!b) {
+            /* Finished. */
+            nodict->length = buffer_size - nodict->offset;
+            break;
+        }
 
- 	    /* Continuing. */
- 	    offset = bson_reader_tell(reader);
- 	    nodict->length = offset - nodict->offset;
- 	    if (PyList_Append(ret, (PyObject*)nodict) < 0) {
+        /* Continuing. */
+        offset = bson_reader_tell(reader);
+        nodict->length = offset - nodict->offset;
+        if (PyList_Append(ret, (PyObject*)nodict) < 0) {
             bson_reader_destroy(reader);
- 		    goto error;
- 	    }
+            goto error;
+        }
     }
 
     Py_CLEAR(nodict);
@@ -245,7 +245,7 @@ _cbson_load_from_bytearray(PyObject *self, PyObject *args) {
     return ret;
 
 error:
-	Py_XDECREF(ret);
+    Py_XDECREF(ret);
     Py_XDECREF(array);
     Py_XDECREF(nodict);
     Py_XDECREF(init_args);
