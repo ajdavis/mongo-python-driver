@@ -216,7 +216,7 @@ c_ext = Feature(
                            sources=['bson/_cbsonmodule.c',
                                     'bson/time64.c',
                                     'bson/buffer.c',
-                                    'bson/nodict.c',
+                                    'bson/bson_document.c',
                                     'bson/encoding_helpers.c'],
                            extra_link_args=['-L/usr/local/lib', '-lbson-1.0']),
                  Extension('pymongo._cmessage',

@@ -26,7 +26,7 @@
 #include "buffer.h"
 #include "time64.h"
 #include "encoding_helpers.h"
-#include "nodict.h"
+#include "bson_document.h"
 
 #define _CBSON_MODULE
 #include "_cbsonmodule.h"
@@ -2396,8 +2396,8 @@ static PyMethodDef _CBSONMethods[] = {
      "convert a BSON string to a SON object."},
     {"decode_all", _cbson_decode_all, METH_VARARGS,
      "convert binary data to a sequence of documents."},
-    {"load_from_bytearray", _cbson_load_from_bytearray, METH_VARARGS,
-     "create a NoDict from a bytearray of BSON."},
+    {"load_from_bytearray", load_from_bytearray, METH_VARARGS,
+     "create a BSONDocumentIterator from a bytearray of BSON."},
     {NULL, NULL, 0, NULL}
 };
 
@@ -2506,8 +2506,8 @@ init_cbson(void)
         INITERROR;
     }
 
-    /* Add NoDict type */
-    if (init_nodict(m) < 0) {
+    /* Add BSONDocument type */
+    if (init_bson_document(m) < 0) {
         Py_DECREF(c_api_object);
 #if PY_MAJOR_VERSION >= 3
         Py_DECREF(m);

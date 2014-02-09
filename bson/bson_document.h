@@ -16,5 +16,15 @@
 
 #include <Python.h>
 
-int init_nodict(PyObject* module);
-PyObject *_cbson_load_from_bytearray(PyObject *self, PyObject *args);
+/*
+ * Add BSONDocument and related functions to module.
+ */
+int
+init_bson_document(PyObject* module);
+
+/*
+ *
+ */
+PyObject *
+load_from_bytearray(PyObject *self,
+                    PyObject *args);

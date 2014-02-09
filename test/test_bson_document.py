@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test the _cbson.NoDict type."""
+"""Test the BSONDocument type."""
 
 
 import sys
@@ -26,25 +26,25 @@ from nose.plugins.skip import SkipTest
 import bson
 from bson import BSON, SON
 try:
-    from bson._cbson import NoDict, load_from_bytearray
+    from bson._cbson import BSONDocument, load_from_bytearray
 except ImportError:
     pass
 
 PY3 = sys.version_info[0] == 3
 
 
-class TestNoDict(unittest.TestCase):
+class TestBSONDocument(unittest.TestCase):
     def setUp(self):
         if not bson._use_c:
             raise SkipTest("_cbson not compiled")
 
-    def test_nodict(self):
+    def test_bson_document(self):
         # No error.
-        str(NoDict())
+        str(BSONDocument())
 
         # Doesn't accept input.
-        self.assertRaises(TypeError, NoDict, {})
-        self.assertRaises(TypeError, NoDict, kw=1)
+        self.assertRaises(TypeError, BSONDocument, {})
+        self.assertRaises(TypeError, BSONDocument, kw=1)
 
     def test_load_from_bytearray(self):
         bson_bytes = b''.join([
@@ -54,13 +54,13 @@ class TestNoDict(unittest.TestCase):
         array = bytearray(bson_bytes)
         documents = list(load_from_bytearray(array))
         doc0, doc1 = documents
-        self.assertTrue(isinstance(doc0, NoDict))
+        self.assertTrue(isinstance(doc0, BSONDocument))
         self.assertEqual(['foo', 'oof'], doc0.keys())
         self.assertEqual(2, len(doc0))
         self.assertEqual('bar', doc0['foo'])
         self.assertEqual('ugh', doc0['oof'])
 
-        self.assertTrue(isinstance(doc1, NoDict))
+        self.assertTrue(isinstance(doc1, BSONDocument))
         self.assertEqual(['fiddle'], doc1.keys())
         self.assertEqual(1, len(doc1))
         self.assertEqual('fazzle', doc1['fiddle'])
