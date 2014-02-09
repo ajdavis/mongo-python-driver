@@ -14,25 +14,9 @@
  * limitations under the License.
  */
 
-#include "Python.h"
-#include <bson.h>  // MongoDB, Inc.'s libbson project
-
 #include "bson_document.h"
 
 #define INFLATED 255
-
-typedef struct {
-    /* Superclass. */
-    PyDictObject dict;
-    /* bytearray from which we're reading */
-    PyObject *array;
-    /* This document's offset into array */
-    bson_off_t offset;
-    /* This document's length */
-    bson_size_t length;
-    /* How many times have we been accessed? */
-    unsigned char n_accesses;
-} BSONDocument;
 
 static Py_ssize_t
 bson_doc_length(BSONDocument *doc)
@@ -215,7 +199,7 @@ error:
 PyDoc_STRVAR(getitem__doc__, "x.__getitem__(y) <==> x[y]");
 PyDoc_STRVAR(keys__doc__, "D.keys() -> list of D's keys");
 
-static PyMethodDef NoDict_methods[] = {
+static PyMethodDef BSONDocument_methods[] = {
 //    {"__contains__",    (PyCFunction)bson_doc_contains,     METH_O | METH_COEXIST,
 //     contains__doc__},
     {"__getitem__",     (PyCFunction)bson_doc_subscript,    METH_O | METH_COEXIST,
@@ -268,7 +252,7 @@ static PyMappingMethods bson_doc_as_mapping = {
 };
 
 static int
-NoDict_init(BSONDocument *self, PyObject *args, PyObject *kwds)
+BSONDocument_init(BSONDocument *self, PyObject *args, PyObject *kwds)
 {
 	/*
 	 * TODO: accept an array, offset, and length.
@@ -289,20 +273,20 @@ NoDict_init(BSONDocument *self, PyObject *args, PyObject *kwds)
 }
 
 static void
-NoDict_dealloc(BSONDocument *self)
+BSONDocument_dealloc(BSONDocument *self)
 {
     /* Free the array if this is the last BSONDocument using it. */
     Py_XDECREF(self->array);
     PyDict_Type.tp_free((PyObject*)self);
 }
 
-static PyTypeObject NoDict_Type = {
+static PyTypeObject BSONDocument_Type = {
     PyObject_HEAD_INIT(NULL)
     0,                       /* ob_size */
     "bson.BSONDocument",           /* tp_name */
     sizeof(BSONDocument),          /* tp_basicsize */
     0,                       /* tp_itemsize */
-    (destructor)NoDict_dealloc, /* tp_dealloc */
+    (destructor)BSONDocument_dealloc, /* tp_dealloc */
     0,                       /* tp_print */
     0,                       /* tp_getattr */
     0,                       /* tp_setattr */
@@ -327,7 +311,7 @@ static PyTypeObject NoDict_Type = {
     0,                       /* tp_weaklistoffset */
     0,                       /* tp_iter */
     0,                       /* tp_iternext */
-    NoDict_methods,          /* tp_methods */
+    BSONDocument_methods,          /* tp_methods */
     0,                       /* tp_members */
     0,                       /* tp_getset */
     0,                       /* tp_base */
@@ -335,110 +319,59 @@ static PyTypeObject NoDict_Type = {
     0,                       /* tp_descr_get */
     0,                       /* tp_descr_set */
     0,                       /* tp_dictoffset */
-    (initproc)NoDict_init,   /* tp_init */
+    (initproc)BSONDocument_init,   /* tp_init */
     0,                       /* tp_alloc */
     0,                       /* tp_new */
 };
 
-PyObject *
-load_from_bytearray(PyObject *self, PyObject *args) {
-    PyObject *ret = NULL;
-    PyObject *array = NULL;
+BSONDocument *
+bson_doc_new(PyObject *array, bson_off_t offset)
+{
+    BSONDocument *doc;
     PyObject *init_args = NULL;
-    BSONDocument *doc = NULL;
-    /* TODO: must this be on the heap? */
-    bson_reader_t *reader;
-    const bson_t *b;
-    bson_bool_t eof = FALSE;
-    bson_off_t offset = 0;
-    bson_size_t buffer_size;
-
-    if (!PyArg_ParseTuple(args, "O", &array)) {
+    if (!PyByteArray_Check(array)) {
+        PyErr_SetString(PyExc_TypeError, "BSONDocument requires a bytearray");
         return NULL;
     }
-    if (!PyByteArray_Check(array)) {
-        PyErr_SetString(PyExc_TypeError, "array must be a bytearray.");
-        goto error;
-    }
-    ret = PyList_New(0);
-    if (!ret) {
-        goto error;
-    }
-    init_args = PyTuple_New(0); /* TODO: cache this? */
+
+    /*
+     * TODO: cache.
+     */
+    init_args = PyTuple_New(0);
     if (!init_args) {
-        goto error;
+        return NULL;
     }
 
-    buffer_size = PyByteArray_Size(array);
-    reader = bson_reader_new_from_data(
-            (bson_uint8_t *)PyByteArray_AsString(array),
-            buffer_size);
+    /*
+     * PyType_GenericNew seems unable to create a dict or a subclass of it.
+     * TODO: why?
+     */
+    doc = (BSONDocument*)PyObject_Call(
+        (PyObject *)&BSONDocument_Type, init_args, NULL);
 
-    if (!reader) {
-        goto error;
+    Py_DECREF(init_args);
+
+    if (!doc) {
+        return NULL;
     }
 
-    while (TRUE) {
-        Py_XDECREF(doc);
-        /*
-         * PyType_GenericNew seems unable to create a dict or a subclass of it.
-         * TODO: why?
-         */
-        doc = (BSONDocument*)PyObject_Call(
-            (PyObject *)&NoDict_Type, init_args, NULL);
-        if (!doc) {
-            bson_reader_destroy(reader);
-            goto error;
-        }
-
-        doc->array = array;
-        Py_INCREF(array);
-        doc->offset = offset;
-        b = bson_reader_read(reader, &eof);
-        if (!b) {
-            /* Finished. */
-            doc->length = buffer_size - doc->offset;
-            break;
-        }
-
-        /* Continuing. */
-        offset = bson_reader_tell(reader);
-        doc->length = offset - doc->offset;
-        if (PyList_Append(ret, (PyObject*)doc) < 0) {
-            bson_reader_destroy(reader);
-            goto error;
-        }
-    }
-
-    Py_CLEAR(doc);
-    bson_reader_destroy(reader);
-
-    if (!eof) {
-       PyErr_SetString(PyExc_ValueError, "Buffer contained invalid BSON.");
-       goto error;
-    }
-
-    return ret;
-
-error:
-    Py_XDECREF(ret);
-    Py_XDECREF(array);
-    Py_XDECREF(doc);
-    Py_XDECREF(init_args);
-    return NULL;
+    doc->array = array;
+    Py_INCREF(array);
+    doc->offset = offset;
+    return doc;
 }
 
 int
 init_bson_document(PyObject* module)
 {
-    NoDict_Type.tp_base = &PyDict_Type;
-    if (PyType_Ready(&NoDict_Type) < 0) {
+    BSONDocument_Type.tp_base = &PyDict_Type;
+    if (PyType_Ready(&BSONDocument_Type) < 0) {
         return -1;
     }
 
-    Py_INCREF(&NoDict_Type);
-    if (PyModule_AddObject(
-            module, "BSONDocument", (PyObject *) &NoDict_Type) < 0) {
+    Py_INCREF(&BSONDocument_Type);
+    if (PyModule_AddObject(module, "BSONDocument",
+                           (PyObject *)&BSONDocument_Type) < 0) {
         return -1;
     }
     return 0;

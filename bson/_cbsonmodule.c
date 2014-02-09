@@ -27,6 +27,7 @@
 #include "time64.h"
 #include "encoding_helpers.h"
 #include "bson_document.h"
+#include "bson_document_iterator.h"
 
 #define _CBSON_MODULE
 #include "_cbsonmodule.h"
@@ -70,7 +71,6 @@ static struct module_state _state;
 
 #define JAVA_LEGACY   5
 #define CSHARP_LEGACY 6
-#define BSON_MAX_SIZE 2147483647
 /* The smallest possible BSON document, i.e. "{}" */
 #define BSON_MIN_SIZE 5
 
@@ -2396,8 +2396,6 @@ static PyMethodDef _CBSONMethods[] = {
      "convert a BSON string to a SON object."},
     {"decode_all", _cbson_decode_all, METH_VARARGS,
      "convert binary data to a sequence of documents."},
-    {"load_from_bytearray", load_from_bytearray, METH_VARARGS,
-     "create a BSONDocumentIterator from a bytearray of BSON."},
     {NULL, NULL, 0, NULL}
 };
 
@@ -2508,6 +2506,15 @@ init_cbson(void)
 
     /* Add BSONDocument type */
     if (init_bson_document(m) < 0) {
+        Py_DECREF(c_api_object);
+#if PY_MAJOR_VERSION >= 3
+        Py_DECREF(m);
+#endif
+        INITERROR;
+    }
+
+    /* Add BSONDocumentIterator type */
+    if (init_bson_document_iterator(m) < 0) {
         Py_DECREF(c_api_object);
 #if PY_MAJOR_VERSION >= 3
         Py_DECREF(m);
