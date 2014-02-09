@@ -35,22 +35,134 @@ typedef struct {
     unsigned char n_accesses;
 } NoDict;
 
+static Py_ssize_t
+nodict_length(NoDict *nodict)
+{
+    Py_ssize_t ret = 0;
+    bson_t bson;
+    bson_iter_t iter;
+    bson_uint8_t *buffer_ptr;
+    buffer_ptr = (bson_uint8_t *)PyByteArray_AsString(nodict->array)
+                 + nodict->offset;
+
+    if (!bson_init_static(
+            &bson,
+            buffer_ptr,
+            nodict->length)) {
+        goto error;
+    }
+    if (!bson_iter_init(&iter, &bson)) {
+        bson_destroy(&bson);
+        goto error;
+    }
+
+    while (bson_iter_next(&iter)) ++ret;
+    bson_destroy(&bson);
+    return ret;
+
+error:
+    /*
+     * TODO: right?
+     */
+    return -1;
+}
+
 static PyObject *
-NoDict_keys(PyObject *self, PyObject *args)
+nodict_subscript(PyObject *self, PyObject *key)
+{
+    NoDict *nodict = (NoDict *)self;
+    PyObject *ret = NULL;
+    const char *cstring_key;
+    unsigned char bson_initialized = FALSE;
+    bson_t bson;
+    bson_iter_t iter;
+    bson_uint8_t *buffer_ptr;
+
+    cstring_key = PyString_AsString(key);
+    if (!cstring_key) {
+        goto error;
+    }
+    buffer_ptr = (bson_uint8_t *)PyByteArray_AsString(nodict->array)
+                 + nodict->offset;
+
+    if (!bson_init_static(
+            &bson,
+            buffer_ptr,
+            nodict->length)) {
+        goto error;
+    }
+    bson_initialized = TRUE;
+    if (!bson_iter_init(&iter, &bson)) {
+        goto error;
+    }
+    if (!bson_iter_find(&iter, cstring_key)) {
+        goto error;
+    }
+
+    /*
+     * TODO: all the BSON types.
+     */
+    switch (bson_iter_type(&iter)) {
+    case BSON_TYPE_UTF8:
+		{
+		   bson_uint32_t utf8_len;
+		   const char *utf8;
+
+		   utf8 = bson_iter_utf8(&iter, &utf8_len);
+		   if (!bson_utf8_validate(utf8, utf8_len, TRUE)) {
+		        goto error;
+		   }
+		   ret = PyString_FromString(utf8);
+		}
+		break;
+    default:
+        PyErr_SetString(PyExc_TypeError, "Unrecognized BSON type");
+        goto error;
+    }
+
+	if (bson_initialized) {
+        bson_destroy(&bson);
+	}
+    return ret;
+
+error:
+	if (bson_initialized) {
+        bson_destroy(&bson);
+	}
+    Py_XDECREF(ret);
+    return NULL;
+
+}
+
+static int
+nodict_ass_sub(PyDictObject *mp, PyObject *v, PyObject *w)
+{
+    /*
+     * TODO
+     */
+    return -1;
+}
+
+static PyObject *
+nodict_keys(PyObject *self, PyObject *args)
 {
     NoDict *nodict = (NoDict *)self;
     PyObject *py_key = NULL;
     bson_t bson;
     bson_iter_t iter;
     const char *key;
+    bson_uint8_t *buffer_ptr;
 
     PyObject *ret = PyList_New(0);
     if (!ret) {
         goto error;
     }
+    buffer_ptr = (bson_uint8_t *)PyByteArray_AsString(nodict->array)
+                 + nodict->offset;
+
     if (!bson_init_static(
             &bson,
-            (bson_uint8_t *)PyByteArray_AsString(nodict->array) + nodict->offset,
+            buffer_ptr,
             nodict->length)) {
         goto error;
     }
@@ -90,7 +202,9 @@ error:
 /*
  * TODO:
  *  - Write an 'inflate' method that creates the dict and releases the buffer,
- *    sets n_accesses to INFLATED
+ *    sets n_accesses to INFLATED.
+ *  - Or perhaps it's not n_accesses that matters but the number of keys, or
+ *    size of the document.
  *
  * For each PyDict_Type method, make a method that:
  *  - If this is already inflated, call dict method
@@ -98,10 +212,60 @@ error:
  *  - Else increment n_accesses. If > threshhold, inflate, else use libbson
  *    method
  */
+
+PyDoc_STRVAR(getitem__doc__, "x.__getitem__(y) <==> x[y]");
+PyDoc_STRVAR(keys__doc__, "D.keys() -> list of D's keys");
+
 static PyMethodDef NoDict_methods[] = {
-    {"keys",            (PyCFunction)NoDict_keys,         METH_NOARGS,
-    "TODO"},
+//    {"__contains__",    (PyCFunction)nodict_contains,     METH_O | METH_COEXIST,
+//     contains__doc__},
+    {"__getitem__",     (PyCFunction)nodict_subscript,    METH_O | METH_COEXIST,
+     getitem__doc__},
+//    {"__sizeof__",      (PyCFunction)nodict_sizeof,       METH_NOARGS,
+//     sizeof__doc__},
+//    {"has_key",         (PyCFunction)nodict_has_key,      METH_O,
+//     has_key__doc__},
+//    {"get",             (PyCFunction)nodict_get,          METH_VARARGS,
+//     get__doc__},
+//    {"setdefault",      (PyCFunction)nodict_setdefault,   METH_VARARGS,
+//     setdefault_doc__},
+//    {"pop",             (PyCFunction)nodict_pop,          METH_VARARGS,
+//     pop__doc__},
+//    {"popitem",         (PyCFunction)nodict_popitem,      METH_NOARGS,
+//     popitem__doc__},
+    {"keys",            (PyCFunction)nodict_keys,         METH_NOARGS,
+    keys__doc__},
+//    {"items",           (PyCFunction)nodict_items,        METH_NOARGS,
+//     items__doc__},
+//    {"values",          (PyCFunction)nodict_values,       METH_NOARGS,
+//     values__doc__},
+//    {"viewkeys",        (PyCFunction)dictkeys_new,      METH_NOARGS,
+//     viewkeys__doc__},
+//    {"viewitems",       (PyCFunction)dictitems_new,     METH_NOARGS,
+//     viewitems__doc__},
+//    {"viewvalues",      (PyCFunction)dictvalues_new,    METH_NOARGS,
+//     viewvalues__doc__},
+//    {"update",          (PyCFunction)nodict_update,       METH_VARARGS | METH_KEYWORDS,
+//     update__doc__},
+//    {"fromkeys",        (PyCFunction)nodict_fromkeys,     METH_VARARGS | METH_CLASS,
+//     fromkeys__doc__},
+//    {"clear",           (PyCFunction)nodict_clear,        METH_NOARGS,
+//     clear__doc__},
+//    {"copy",            (PyCFunction)nodict_copy,         METH_NOARGS,
+//     copy__doc__},
+//    {"iterkeys",        (PyCFunction)nodict_iterkeys,     METH_NOARGS,
+//     iterkeys__doc__},
+//    {"itervalues",      (PyCFunction)nodict_itervalues,   METH_NOARGS,
+//     itervalues__doc__},
+//    {"iteritems",       (PyCFunction)nodict_iteritems,    METH_NOARGS,
+//     iteritems__doc__},
     {NULL,	NULL},
+};
+
+static PyMappingMethods nodict_as_mapping = {
+    (lenfunc)nodict_length, /* mp_length */
+    (binaryfunc)nodict_subscript, /* mp_subscript */
+    (objobjargproc)nodict_ass_sub, /* mp_ass_subscript */
 };
 
 static int
@@ -139,13 +303,14 @@ static PyTypeObject NoDict_Type = {
     0,                       /* tp_repr */
     0,                       /* tp_as_number */
     0,                       /* tp_as_sequence */
-    0,                       /* tp_as_mapping */
+    &nodict_as_mapping,      /* tp_as_mapping */
     0,                       /* tp_hash */
     0,                       /* tp_call */
     0,                       /* tp_str */
     0,                       /* tp_getattro */
     0,                       /* tp_setattro */
     0,                       /* tp_as_buffer */
+    /* TODO: Py_TPFLAGS_DICT_SUBCLASS ? */
     Py_TPFLAGS_DEFAULT |
       Py_TPFLAGS_BASETYPE,   /* tp_flags */
     "TODO",                  /* tp_doc */
@@ -208,7 +373,9 @@ _cbson_load_from_bytearray(PyObject *self, PyObject *args) {
 
     while (1) {
         Py_XDECREF(nodict);
-        /* PyType_GenericNew seems unable to create a dict or a subclass of it. */
+        /* PyType_GenericNew seems unable to create a dict or a subclass of it.
+         * TODO: why?
+         */
         nodict = (NoDict*)PyObject_Call((PyObject *)&NoDict_Type, init_args, NULL);
         if (!nodict) {
             bson_reader_destroy(reader);
