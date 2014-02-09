@@ -271,7 +271,11 @@ static PyMappingMethods nodict_as_mapping = {
 static int
 NoDict_init(NoDict *self, PyObject *args, PyObject *kwds)
 {
-    /* TODO: shouldn't allow any args */
+    if ((args && PyObject_Length(args) > 0)
+    		|| (kwds && PyObject_Length(kwds) > 0)) {
+    	PyErr_SetString(PyExc_TypeError, "NoDict takes no arguments");
+    	return -1;
+    }
     if (PyDict_Type.tp_init((PyObject *)self, args, kwds) < 0) {
         return -1;
     }
