@@ -23,6 +23,7 @@
 
 typedef struct {
     PyObject_HEAD
+    PyObject *array;
     bson_reader_t *reader;
 } BSONDocumentIterator;
 
@@ -34,15 +35,71 @@ bson_doc_iter(PyObject *self) {
 
 PyObject *
 bson_doc_iternext(PyObject *self) {
+    bson_off_t start;
+    bson_off_t end;
+    bson_bool_t eof = FALSE;
+    BSONDocument *doc = NULL;
     BSONDocumentIterator *iter = (BSONDocumentIterator *)self;
-    if (FALSE) {
+    bson_reader_t *reader = iter->reader;
+
+    if (!reader) {
         /*
-         * TODO
+         * Finished.
          */
-    } else {
         PyErr_SetNone(PyExc_StopIteration);
         return NULL;
     }
+
+    start = bson_reader_tell(reader);
+    if (!bson_reader_read(reader, &eof)) {
+        /*
+         * This was the last document, or there was an error.
+         */
+        bson_reader_destroy(reader);
+        reader = iter->reader = NULL;
+        Py_CLEAR(iter->array);
+        if (eof) {
+            /*
+             * Normal completion.
+             */
+            PyErr_SetNone(PyExc_StopIteration);
+            return NULL;
+        } else {
+            /*
+             * Raise InvalidBSON exception.
+             */
+            PyObject* InvalidBSON;
+            PyObject* errors = PyImport_ImportModule("bson.errors");
+            if (!errors)
+                goto error;
+            InvalidBSON = PyObject_GetAttrString(errors, "InvalidBSON");
+            Py_DECREF(errors);
+            if (!InvalidBSON)
+                goto error;
+            PyErr_SetString(InvalidBSON, "Buffer contained invalid BSON.");
+            goto error;
+        }
+    }
+
+    end = bson_reader_tell(reader);
+    doc = bson_doc_new(iter->array, start, end);
+    if (!doc)
+        goto error;
+
+    return (PyObject *)doc;
+
+error:
+    /*
+     * Invalidate the iterator.
+     * TODO: make future uses raise a different error than StopIteration.
+     */
+    if (reader) {
+        bson_reader_destroy(reader);
+    }
+
+    iter->reader = NULL;
+    Py_XDECREF(doc);
+    return NULL;
 }
 
 static PyTypeObject BSONDocumentIterator_Type = {
@@ -79,54 +136,17 @@ static PyTypeObject BSONDocumentIterator_Type = {
 };
 
 static PyObject *
-bson_doc_iter_init(PyObject *self, PyObject *args)
+bson_doc_iter_new(PyObject *array)
 {
     BSONDocumentIterator *ret = NULL;
-    if (args && PyObject_Size(args) > 0) {
-        PyErr_SetString(PyExc_TypeError,
-                        "BSONDocumentIterator takes no arguments");
-        return NULL;
-    }
-
-    /* I don't need Python callable __init__() method for this iterator,
-     so I'll simply allocate it as PyObject and initialize it by hand. */
-    ret = PyObject_New(BSONDocumentIterator, &BSONDocumentIterator_Type);
-    if (!ret) {
-        return NULL;
-    }
-
-    if (!PyObject_Init((PyObject *)ret, &BSONDocumentIterator_Type)) {
-        Py_DECREF(ret);
-        return NULL;
-    }
-
-    /*
-     * TODO: finish initialization.
-     */
-    return (PyObject *)ret;
-}
-
-PyObject *
-load_from_bytearray(PyObject *self, PyObject *args) {
-    PyObject *array = NULL;
-    PyObject *ret = NULL;
-    BSONDocument *doc = NULL;
-    /* TODO: must this be on the heap? */
-    bson_reader_t *reader;
-    const bson_t *b;
-    bson_bool_t eof = FALSE;
-    bson_off_t offset = 0;
     bson_size_t buffer_size;
+    /*
+     * TODO: must this be a separate allocation from the BSONDocumentIterator?
+     */
+    bson_reader_t *reader = NULL;
 
-    if (!PyArg_ParseTuple(args, "O", &array)) {
-        goto error;
-    }
     if (!array || !PyByteArray_Check(array)) {
         PyErr_SetString(PyExc_TypeError, "array must be a bytearray.");
-        goto error;
-    }
-    ret = PyList_New(0);
-    if (!ret) {
         goto error;
     }
 
@@ -139,55 +159,35 @@ load_from_bytearray(PyObject *self, PyObject *args) {
         goto error;
     }
 
-    while (TRUE) {
-        Py_XDECREF(doc);
-        /*
-         * TODO: we should know length by now and pass it in, too.
-         * Otherwise have a doc in half-initialized state.
-         */
-        doc = bson_doc_new(array, offset);
-        if (!doc) {
-            bson_reader_destroy(reader);
-            goto error;
-        }
-        b = bson_reader_read(reader, &eof);
-        if (!b) {
-            /* Finished. */
-            doc->length = buffer_size - doc->offset;
-            break;
-        }
+    ret = PyObject_New(BSONDocumentIterator,
+                       &BSONDocumentIterator_Type);
+    if (!ret)
+        goto error;
 
-        /* Continuing. */
-        offset = bson_reader_tell(reader);
-        doc->length = offset - doc->offset;
-        if (PyList_Append(ret, (PyObject*)doc) < 0) {
-            bson_reader_destroy(reader);
-            goto error;
-        }
-    }
-
-    Py_CLEAR(doc);
-    bson_reader_destroy(reader);
-
-    if (!eof) {
-       PyErr_SetString(PyExc_ValueError, "Buffer contained invalid BSON.");
-       goto error;
-    }
-
-    return ret;
+    Py_INCREF(array);
+    ret->array = array;
+    ret->reader = reader;
+    return (PyObject *)ret;
 
 error:
     Py_XDECREF(ret);
-    Py_XDECREF(array);
-    Py_XDECREF(doc);
+    if (reader) {
+        bson_reader_destroy(reader);
+    }
+
     return NULL;
 }
 
 /*
- * TODO: can't we use METH_O?
+ * TODO: remove this, should just be BSONDocumentIterator(array) in Python.
  */
+PyObject *
+load_from_bytearray(PyObject *self, PyObject *array) {
+    return bson_doc_iter_new(array);
+}
+
 static PyMethodDef method = {
-    "load_from_bytearray", (PyCFunction)load_from_bytearray, METH_VARARGS,
+    "load_from_bytearray", (PyCFunction)load_from_bytearray, METH_O,
     "A BSONDocumentIterator over a bytearray of BSON documents."
 };
 

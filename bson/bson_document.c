@@ -76,9 +76,14 @@ bson_doc_subscript(PyObject *self, PyObject *key)
     }
     bson_initialized = TRUE;
     if (!bson_iter_init(&iter, &bson)) {
+        /*
+         * TODO: Raise InvalidBSON. Refactor error-raising code from
+         * _cbsonmodule.c and bson_document_iterator.c first.
+         */
         goto error;
     }
     if (!bson_iter_find(&iter, cstring_key)) {
+        PyErr_SetObject(PyExc_KeyError, key);
         goto error;
     }
 
@@ -109,9 +114,9 @@ bson_doc_subscript(PyObject *self, PyObject *key)
     return ret;
 
 error:
-	if (bson_initialized) {
+    if (bson_initialized) {
         bson_destroy(&bson);
-	}
+    }
     Py_XDECREF(ret);
     return NULL;
 
@@ -325,7 +330,7 @@ static PyTypeObject BSONDocument_Type = {
 };
 
 BSONDocument *
-bson_doc_new(PyObject *array, bson_off_t offset)
+bson_doc_new(PyObject *array, bson_off_t start, bson_off_t end)
 {
     BSONDocument *doc;
     PyObject *init_args = NULL;
@@ -355,9 +360,10 @@ bson_doc_new(PyObject *array, bson_off_t offset)
         return NULL;
     }
 
-    doc->array = array;
     Py_INCREF(array);
-    doc->offset = offset;
+    doc->array = array;
+    doc->offset = start;
+    doc->length = end - start;
     return doc;
 }
 

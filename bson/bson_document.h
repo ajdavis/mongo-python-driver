@@ -32,10 +32,10 @@ typedef struct {
 } BSONDocument;
 
 /*
- * Create a BSONDocument from a bytearray and offset.
+ * Create a BSONDocument from a bytearray and offsets.
  */
 BSONDocument *
-bson_doc_new(PyObject *array, bson_off_t offset);
+bson_doc_new(PyObject *array, bson_off_t start, bson_off_t end);
 
 /*
  * Add BSONDocument and related functions to module.

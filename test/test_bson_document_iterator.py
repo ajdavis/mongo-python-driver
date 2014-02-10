@@ -17,11 +17,13 @@
 
 import sys
 import unittest
+
 sys.path[0:0] = [""]
 
 from nose.plugins.skip import SkipTest
 
-from bson import BSON, SON, EMPTY
+from bson import BSON, SON, EMPTY, InvalidBSON
+from bson.py3compat import b
 
 try:
     from bson._cbson import (
@@ -52,11 +54,38 @@ class TestBSONDocumentIterator(unittest.TestCase):
         self.assertEqual(2, len(doc0))
         self.assertEqual('bar', doc0['foo'])
         self.assertEqual('ugh', doc0['oof'])
+        try:
+            doc0['not-here']
+        except KeyError, e:
+            self.assertEqual("'not-here'", str(e))
+        else:
+            self.fail('Expected KeyError')
 
         self.assertTrue(isinstance(doc1, BSONDocument))
         self.assertEqual(['fiddle'], doc1.keys())
         self.assertEqual(1, len(doc1))
         self.assertEqual('fazzle', doc1['fiddle'])
+
+    def test_invalid(self):
+        bson_bytes = EMPTY.join([
+            BSON.encode({}),
+            b('not valid bson')])
+
+        array = bytearray(bson_bytes)
+        it = load_from_bytearray(array)
+        self.assertTrue(isinstance(it, BSONDocumentIterator))
+        
+        doc = next(it)
+        self.assertTrue(isinstance(doc, BSONDocument))
+        self.assertEqual([], doc.keys())
+        self.assertEqual(0, len(doc))
+
+        print 'raising?...'
+        self.assertRaises(InvalidBSON, next, it)
+        print 'raised'
+
+        # Now the iterator is invalid.
+        self.assertRaises(StopIteration, next, it)
 
 if __name__ == '__main__':
     unittest.main()
