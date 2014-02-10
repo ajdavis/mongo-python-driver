@@ -44,9 +44,6 @@ bson_doc_length(BSONDocument *doc)
     return ret;
 
 error:
-    /*
-     * TODO: right?
-     */
     return -1;
 }
 
@@ -82,6 +79,9 @@ bson_doc_subscript(PyObject *self, PyObject *key)
          */
         goto error;
     }
+    /*
+     * TODO: we could use bson_iter_find_with_len if it were public.
+     */
     if (!bson_iter_find(&iter, cstring_key)) {
         PyErr_SetObject(PyExc_KeyError, key);
         goto error;
@@ -98,7 +98,10 @@ bson_doc_subscript(PyObject *self, PyObject *key)
 
 		   utf8 = bson_iter_utf8(&iter, &utf8_len);
 		   if (!bson_utf8_validate(utf8, utf8_len, TRUE)) {
-		        goto error;
+		       /*
+		        * TODO: set exception.
+		        */
+		       goto error;
 		   }
 		   ret = PyString_FromString(utf8);
 		}
