@@ -14,9 +14,27 @@
  * limitations under the License.
  */
 
+#include "Python.h"
+#include "bson.h"  // MongoDB, Inc.'s libbson project
+
 #include "bson_document.h"
 
 #define INFLATED 255
+
+#define IS_INFLATED(doc) (doc->n_accesses == INFLATED)
+
+typedef struct {
+    /* Superclass. */
+    PyDictObject dict;
+    /* bytearray from which we're reading */
+    PyObject *array;
+    /* This document's offset into array */
+    bson_off_t offset;
+    /* This document's length */
+    bson_size_t length;
+    /* How many times have we been accessed? */
+    unsigned char n_accesses;
+} BSONDocument;
 
 static Py_ssize_t
 bson_doc_length(BSONDocument *doc)
@@ -41,6 +59,7 @@ bson_doc_length(BSONDocument *doc)
 
     while (bson_iter_next(&iter)) ++ret;
     bson_destroy(&bson);
+    ++doc->n_accesses;
     return ret;
 
 error:
@@ -75,7 +94,7 @@ bson_doc_subscript(PyObject *self, PyObject *key)
     if (!bson_iter_init(&iter, &bson)) {
         /*
          * TODO: Raise InvalidBSON. Refactor error-raising code from
-         * _cbsonmodule.c and bson_document_iterator.c first.
+         * _cbsonmodule.c and bson_buffer.c first.
          */
         goto error;
     }
@@ -86,6 +105,8 @@ bson_doc_subscript(PyObject *self, PyObject *key)
         PyErr_SetObject(PyExc_KeyError, key);
         goto error;
     }
+
+    ++doc->n_accesses;
 
     /*
      * TODO: all the BSON types.
@@ -192,16 +213,18 @@ error:
 
 /*
  * TODO:
- *  - Write an 'inflate' method that creates the dict and releases the buffer,
- *    sets n_accesses to INFLATED.
- *  - Or perhaps it's not n_accesses that matters but the number of keys, or
- *    size of the document.
+ *  - Write an 'inflate' method that creates the dict, stores the key order,
+ *    and releases the buffer.
+ *  - Triggered by modifications to the dict, or n_accesses > threshold, or
+ *    buffer is being deallocated.
  *
  * For each PyDict_Type method, make a method that:
  *  - If this is already inflated, call dict method
- *  - If the method would modify the dict, ensure inflated and call dict method
- *  - Else increment n_accesses. If > threshhold, inflate, else use libbson
- *    method
+ *  - If the method would modify, ensure inflated and call dict method
+ *  - Else increment n_accesses and call libbson method
+ *
+ * BSONDocument must also be iterable, with the same shortcut methods as
+ * BSONBuffer.
  */
 
 PyDoc_STRVAR(getitem__doc__, "x.__getitem__(y) <==> x[y]");
@@ -319,7 +342,7 @@ static PyTypeObject BSONDocument_Type = {
     0,                       /* tp_weaklistoffset */
     0,                       /* tp_iter */
     0,                       /* tp_iternext */
-    BSONDocument_methods,          /* tp_methods */
+    BSONDocument_methods,    /* tp_methods */
     0,                       /* tp_members */
     0,                       /* tp_getset */
     0,                       /* tp_base */
@@ -327,13 +350,13 @@ static PyTypeObject BSONDocument_Type = {
     0,                       /* tp_descr_get */
     0,                       /* tp_descr_set */
     0,                       /* tp_dictoffset */
-    (initproc)BSONDocument_init,   /* tp_init */
+    (initproc)BSONDocument_init, /* tp_init */
     0,                       /* tp_alloc */
     0,                       /* tp_new */
 };
 
-BSONDocument *
-bson_doc_new(PyObject *array, bson_off_t start, bson_off_t end)
+PyObject *
+BSONDocument_New(PyObject *array, bson_off_t start, bson_off_t end)
 {
     BSONDocument *doc;
     PyObject *init_args = NULL;
@@ -346,9 +369,8 @@ bson_doc_new(PyObject *array, bson_off_t start, bson_off_t end)
      * TODO: cache.
      */
     init_args = PyTuple_New(0);
-    if (!init_args) {
+    if (!init_args)
         return NULL;
-    }
 
     /*
      * PyType_GenericNew seems unable to create a dict or a subclass of it.
@@ -359,24 +381,26 @@ bson_doc_new(PyObject *array, bson_off_t start, bson_off_t end)
 
     Py_DECREF(init_args);
 
-    if (!doc) {
+    if (!doc)
         return NULL;
-    }
 
     Py_INCREF(array);
+    /*
+     * TODO: should store a weakref to the array somewhere, whose callback
+     * inflates all dependent BSONDocuments
+     */
     doc->array = array;
     doc->offset = start;
     doc->length = end - start;
-    return doc;
+    return (PyObject *)doc;
 }
 
 int
 init_bson_document(PyObject* module)
 {
     BSONDocument_Type.tp_base = &PyDict_Type;
-    if (PyType_Ready(&BSONDocument_Type) < 0) {
+    if (PyType_Ready(&BSONDocument_Type) < 0)
         return -1;
-    }
 
     Py_INCREF(&BSONDocument_Type);
     if (PyModule_AddObject(module, "BSONDocument",

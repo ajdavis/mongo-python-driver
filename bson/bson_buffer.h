@@ -15,14 +15,14 @@
  */
 
 /*
- * A BSONDocumentIterator over a bytearray of BSON documents.
+ * A BSONBuffer over a bytearray of BSON documents.
  */
 PyObject *
-load_from_bytearray(PyObject *self, PyObject *array);
+BSONBuffer_New(PyObject *array);
 
 
 /*
- * Add BSONDocumentIterator and related functions to module.
+ * Add BSONBuffer and related functions to module.
  */
 int
-init_bson_document_iterator(PyObject* module);
+init_bson_buffer(PyObject* module);

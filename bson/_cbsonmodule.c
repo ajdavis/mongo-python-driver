@@ -21,13 +21,14 @@
  */
 
 #include "Python.h"
+#include "bson.h"  // MongoDB, Inc.'s libbson project
 #include "datetime.h"
 
 #include "buffer.h"
 #include "time64.h"
 #include "encoding_helpers.h"
 #include "bson_document.h"
-#include "bson_document_iterator.h"
+#include "bson_buffer.h"
 
 #define _CBSON_MODULE
 #include "_cbsonmodule.h"
@@ -2513,8 +2514,8 @@ init_cbson(void)
         INITERROR;
     }
 
-    /* Add BSONDocumentIterator type */
-    if (init_bson_document_iterator(m) < 0) {
+    /* Add BSONBuffer type */
+    if (init_bson_buffer(m) < 0) {
         Py_DECREF(c_api_object);
 #if PY_MAJOR_VERSION >= 3
         Py_DECREF(m);

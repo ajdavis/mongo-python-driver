@@ -14,28 +14,11 @@
  * limitations under the License.
  */
 
-#include <Python.h>
-
-#include <bson.h>  // MongoDB, Inc.'s libbson project
-
-typedef struct {
-    /* Superclass. */
-    PyDictObject dict;
-    /* bytearray from which we're reading */
-    PyObject *array;
-    /* This document's offset into array */
-    bson_off_t offset;
-    /* This document's length */
-    bson_size_t length;
-    /* How many times have we been accessed? */
-    unsigned char n_accesses;
-} BSONDocument;
-
 /*
  * Create a BSONDocument from a bytearray and offsets.
  */
-BSONDocument *
-bson_doc_new(PyObject *array, bson_off_t start, bson_off_t end);
+PyObject *
+BSONDocument_New(PyObject *array, bson_off_t start, bson_off_t end);
 
 /*
  * Add BSONDocument and related functions to module.

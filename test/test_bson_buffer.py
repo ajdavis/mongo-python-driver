@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test the BSONDocumentIterator type."""
+"""Test the BSONBuffer type."""
 
 
 import sys
@@ -26,28 +26,26 @@ from bson import BSON, SON, EMPTY, InvalidBSON
 from bson.py3compat import b
 
 try:
-    from bson._cbson import (
-        BSONDocument, BSONDocumentIterator, load_from_bytearray)
+    from bson._cbson import BSONDocument, BSONBuffer
 except ImportError:
     BSONDocument = None
-    BSONDocumentIterator = None
-    load_from_bytearray = None
+    BSONBuffer = None
 
 
-class TestBSONDocumentIterator(unittest.TestCase):
+class TestBSONBuffer(unittest.TestCase):
     def setUp(self):
-        if not BSONDocumentIterator:
+        if not BSONBuffer:
             raise SkipTest("_cbson not compiled")
 
-    def test_load_from_bytearray(self):
+    def test_bson_buffer(self):
         bson_bytes = EMPTY.join([
             BSON.encode(SON([('foo', 'bar'), ('oof', 'ugh')])),
             BSON.encode(SON([('fiddle', 'fazzle')]))])
 
         array = bytearray(bson_bytes)
-        it = load_from_bytearray(array)
-        self.assertTrue(isinstance(it, BSONDocumentIterator))
-        doc0, doc1 = it
+        buf = BSONBuffer(array)
+        self.assertTrue(isinstance(buf, BSONBuffer))
+        doc0, doc1 = buf
 
         self.assertTrue(isinstance(doc0, BSONDocument))
         self.assertEqual(['foo', 'oof'], doc0.keys())
@@ -72,20 +70,18 @@ class TestBSONDocumentIterator(unittest.TestCase):
             b('not valid bson')])
 
         array = bytearray(bson_bytes)
-        it = load_from_bytearray(array)
-        self.assertTrue(isinstance(it, BSONDocumentIterator))
+        buf = BSONBuffer(array)
+        self.assertTrue(isinstance(buf, BSONBuffer))
         
-        doc = next(it)
+        doc = next(buf)
         self.assertTrue(isinstance(doc, BSONDocument))
         self.assertEqual([], doc.keys())
         self.assertEqual(0, len(doc))
 
-        print 'raising?...'
-        self.assertRaises(InvalidBSON, next, it)
-        print 'raised'
+        self.assertRaises(InvalidBSON, next, buf)
 
         # Now the iterator is invalid.
-        self.assertRaises(StopIteration, next, it)
+        self.assertRaises(StopIteration, next, buf)
 
 if __name__ == '__main__':
     unittest.main()
