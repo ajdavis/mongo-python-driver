@@ -37,13 +37,14 @@ class TestBSONBuffer(unittest.TestCase):
         if not BSONBuffer:
             raise SkipTest("_cbson not compiled")
 
-    def test_bson_buffer(self):
-        bson_bytes = EMPTY.join([
-            BSON.encode(SON([('foo', 'bar'), ('oof', 'ugh')])),
+        self.bson_bytes = EMPTY.join([
+            BSON.encode(SON([('foo', 'bar'), ('oof', 1)])),
             BSON.encode(SON([('fiddle', 'fazzle')]))])
 
-        array = bytearray(bson_bytes)
-        buf = BSONBuffer(array)
+        self.array = bytearray(self.bson_bytes)
+
+    def test_bson_buffer(self):
+        buf = BSONBuffer(self.array)
         self.assertTrue(isinstance(buf, BSONBuffer))
         doc0, doc1 = buf
 
@@ -51,7 +52,7 @@ class TestBSONBuffer(unittest.TestCase):
         self.assertEqual(['foo', 'oof'], doc0.keys())
         self.assertEqual(2, len(doc0))
         self.assertEqual('bar', doc0['foo'])
-        self.assertEqual('ugh', doc0['oof'])
+        self.assertEqual(1, doc0['oof'])
         try:
             doc0['not-here']
         except KeyError, e:

@@ -17,13 +17,16 @@
 
 import sys
 import unittest
+from bson import SON, BSON
+
 sys.path[0:0] = [""]
 
 from nose.plugins.skip import SkipTest
 
 try:
-    from bson._cbson import BSONDocument
+    from bson._cbson import BSONBuffer, BSONDocument
 except ImportError:
+    BSONBuffer = None
     BSONDocument = None
 
 
@@ -39,6 +42,21 @@ class TestBSONDocument(unittest.TestCase):
         # Doesn't accept input.
         self.assertRaises(TypeError, BSONDocument, {})
         self.assertRaises(TypeError, BSONDocument, kw=1)
+
+    def test_iteritems(self):
+        array = bytearray(BSON.encode(SON([('foo', 'bar'), ('oof', 1)])))
+        buf = BSONBuffer(array)
+        doc = next(buf)
+        iteritems = doc.iteritems()  # Returns wrong type.
+        self.assertFalse('dictionary-itemiterator' in str(iteritems))
+
+        item0 = next(iteritems)
+        self.assertEqual(('foo', 'bar'), item0)
+
+        item1 = next(iteritems)
+        self.assertEqual(('oof', 1), item1)
+
+        self.assertRaises(StopIteration, next, iteritems)
 
 if __name__ == '__main__':
     unittest.main()

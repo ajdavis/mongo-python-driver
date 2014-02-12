@@ -28,6 +28,7 @@
 #include "time64.h"
 #include "encoding_helpers.h"
 #include "bson_document.h"
+#include "bson_document_iter.h"
 #include "bson_buffer.h"
 
 #define _CBSON_MODULE
@@ -2401,7 +2402,6 @@ static PyMethodDef _CBSONMethods[] = {
 };
 
 #if PY_MAJOR_VERSION >= 3
-#define INITERROR return NULL
 static int _cbson_traverse(PyObject *m, visitproc visit, void *arg) {
     Py_VISIT(GETSTATE(m)->Binary);
     Py_VISIT(GETSTATE(m)->Code);
@@ -2449,19 +2449,17 @@ static struct PyModuleDef moduledef = {
 PyMODINIT_FUNC
 PyInit__cbson(void)
 #else
-#define INITERROR return
 PyMODINIT_FUNC
 init_cbson(void)
 #endif
 {
-    PyObject *m;
-    PyObject *c_api_object;
+    PyObject *m = NULL;
+    PyObject *c_api_object = NULL;
     static void *_cbson_API[_cbson_API_POINTER_COUNT];
 
     PyDateTime_IMPORT;
-    if (PyDateTimeAPI == NULL) {
-        INITERROR;
-    }
+    if (PyDateTimeAPI == NULL)
+        goto error;
 
     /* Export C API */
     _cbson_API[_cbson_buffer_write_bytes_INDEX] = (void *) buffer_write_bytes;
@@ -2476,54 +2474,48 @@ init_cbson(void)
     c_api_object = PyCObject_FromVoidPtr((void *) _cbson_API, NULL);
 #endif
     if (c_api_object == NULL)
-        INITERROR;
+        goto error;
 
 #if PY_MAJOR_VERSION >= 3
     m = PyModule_Create(&moduledef);
 #else
     m = Py_InitModule("_cbson", _CBSONMethods);
 #endif
-    if (m == NULL) {
-        Py_DECREF(c_api_object);
-        INITERROR;
-    }
+    if (m == NULL)
+        goto error;
 
     /* Import several python objects */
-    if (_load_python_objects(m)) {
-        Py_DECREF(c_api_object);
-#if PY_MAJOR_VERSION >= 3
-        Py_DECREF(m);
-#endif
-        INITERROR;
-    }
+    if (_load_python_objects(m))
+        goto error;
 
-    if (PyModule_AddObject(m, "_C_API", c_api_object) < 0) {
-        Py_DECREF(c_api_object);
-#if PY_MAJOR_VERSION >= 3
-        Py_DECREF(m);
-#endif
-        INITERROR;
-    }
+    if (PyModule_AddObject(m, "_C_API", c_api_object) < 0)
+        goto error;
 
     /* Add BSONDocument type */
-    if (init_bson_document(m) < 0) {
-        Py_DECREF(c_api_object);
-#if PY_MAJOR_VERSION >= 3
-        Py_DECREF(m);
-#endif
-        INITERROR;
-    }
+    if (init_bson_document(m) < 0)
+        goto error;
+
+    /* Add BSONDocument iterators */
+    if (init_bson_document_iter(m) < 0 )
+        goto error;
 
     /* Add BSONBuffer type */
-    if (init_bson_buffer(m) < 0) {
-        Py_DECREF(c_api_object);
-#if PY_MAJOR_VERSION >= 3
-        Py_DECREF(m);
-#endif
-        INITERROR;
-    }
+    if (init_bson_buffer(m) < 0)
+        goto error;
 
 #if PY_MAJOR_VERSION >= 3
     return m;
+#else
+    return;
+#endif
+
+error:
+    Py_XDECREF(c_api_object);
+
+#if PY_MAJOR_VERSION >= 3
+    Py_XDECREF(m);
+    return NULL;
+#else
+    return;
 #endif
 }

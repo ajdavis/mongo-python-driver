@@ -18,23 +18,66 @@
 #include "bson.h"  // MongoDB, Inc.'s libbson project
 
 #include "bson_document.h"
+#include "bson_document_iter.h"
+
+PyObject *
+bson_iter_py_value(bson_iter_t *iter)
+{
+    PyObject *ret = NULL;
+    /*
+     * TODO: all the BSON types.
+     */
+    switch (bson_iter_type(iter)) {
+    case BSON_TYPE_UTF8:
+        {
+           bson_uint32_t utf8_len;
+           const char *utf8;
+
+           utf8 = bson_iter_utf8(iter, &utf8_len);
+           if (!bson_utf8_validate(utf8, utf8_len, TRUE)) {
+               /*
+                * TODO: set exception.
+                */
+               goto error;
+           }
+           ret = PyString_FromString(utf8);
+        }
+        break;
+    case BSON_TYPE_INT32:
+        ret = PyLong_FromLong(bson_iter_int32(iter));
+        break;
+    case BSON_TYPE_INT64:
+       ret = PyLong_FromLongLong(bson_iter_int64(iter));
+        break;
+    default:
+        PyErr_SetString(PyExc_TypeError, "Unrecognized BSON type");
+        goto error;
+    }
+
+    if (!ret)
+        goto error;
+
+    return ret;
+
+error:
+    Py_XDECREF(ret);
+    return NULL;
+}
 
 #define INFLATED 255
 
 #define IS_INFLATED(doc) (doc->n_accesses == INFLATED)
 
-typedef struct {
-    /* Superclass. */
-    PyDictObject dict;
-    /* bytearray from which we're reading */
-    PyObject *array;
-    /* This document's offset into array */
-    bson_off_t offset;
-    /* This document's length */
-    bson_size_t length;
-    /* How many times have we been accessed? */
-    unsigned char n_accesses;
-} BSONDocument;
+/*
+ * Replaces linear access with a hash table and releases the bytearray.
+ * Returns TRUE on success.
+ */
+int
+inflate(BSONDocument *doc)
+{
+
+    return -1;
+}
 
 static Py_ssize_t
 bson_doc_length(BSONDocument *doc)
@@ -107,34 +150,11 @@ bson_doc_subscript(PyObject *self, PyObject *key)
     }
 
     ++doc->n_accesses;
-
-    /*
-     * TODO: all the BSON types.
-     */
-    switch (bson_iter_type(&iter)) {
-    case BSON_TYPE_UTF8:
-		{
-		   bson_uint32_t utf8_len;
-		   const char *utf8;
-
-		   utf8 = bson_iter_utf8(&iter, &utf8_len);
-		   if (!bson_utf8_validate(utf8, utf8_len, TRUE)) {
-		       /*
-		        * TODO: set exception.
-		        */
-		       goto error;
-		   }
-		   ret = PyString_FromString(utf8);
-		}
-		break;
-    default:
-        PyErr_SetString(PyExc_TypeError, "Unrecognized BSON type");
+    ret = bson_iter_py_value(&iter);
+    if (!ret)
         goto error;
-    }
 
-	if (bson_initialized) {
-        bson_destroy(&bson);
-	}
+    bson_destroy(&bson);
     return ret;
 
 error:
@@ -229,6 +249,7 @@ error:
 
 PyDoc_STRVAR(getitem__doc__, "x.__getitem__(y) <==> x[y]");
 PyDoc_STRVAR(keys__doc__, "D.keys() -> list of D's keys");
+PyDoc_STRVAR(iteritems__doc__, "D.iteritems() -> an iterator over the (key, value) items of D");
 
 static PyMethodDef BSONDocument_methods[] = {
 //    {"__contains__",    (PyCFunction)bson_doc_contains,     METH_O | METH_COEXIST,
@@ -271,8 +292,8 @@ static PyMethodDef BSONDocument_methods[] = {
 //     iterkeys__doc__},
 //    {"itervalues",      (PyCFunction)bson_doc_itervalues,   METH_NOARGS,
 //     itervalues__doc__},
-//    {"iteritems",       (PyCFunction)bson_doc_iteritems,    METH_NOARGS,
-//     iteritems__doc__},
+    {"iteritems",       (PyCFunction)bson_doc_iteritems,    METH_NOARGS,
+     iteritems__doc__},
     {NULL,	NULL},
 };
 

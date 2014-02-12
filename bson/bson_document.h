@@ -14,6 +14,30 @@
  * limitations under the License.
  */
 
+#ifndef BSON_DOCUMENT_H
+#define BSON_DOCUMENT_H
+
+#include "bson.h"
+
+typedef struct {
+    /* Superclass. */
+    PyDictObject dict;
+    /* bytearray from which we're reading */
+    PyObject *array;
+    /* This document's offset into array */
+    bson_off_t offset;
+    /* This document's length */
+    bson_size_t length;
+    /* How many times have we been accessed? */
+    unsigned char n_accesses;
+} BSONDocument;
+
+/*
+ * TODO: move?
+ */
+PyObject *
+bson_iter_py_value(bson_iter_t *iter);
+
 /*
  * Create a BSONDocument from a bytearray and offsets.
  */
@@ -25,3 +49,5 @@ BSONDocument_New(PyObject *array, bson_off_t start, bson_off_t end);
  */
 int
 init_bson_document(PyObject* module);
+
+#endif /* BSON_DOCUMENT_H */
