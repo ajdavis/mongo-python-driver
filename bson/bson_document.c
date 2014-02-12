@@ -66,43 +66,119 @@ error:
 
 #define INFLATED 255
 
-#define IS_INFLATED(doc) (doc->n_accesses == INFLATED)
+#define IS_INFLATED(doc) (doc->n_accesses == 255)
+
+#define SHOULD_INFLATE(doc) (doc->n_accesses >= 10)
+
+typedef struct {
+    bson_t bson;
+    bson_iter_t iter;
+} bson_and_iter_t;
 
 /*
- * Replaces linear access with a hash table and releases the bytearray.
- * Returns TRUE on success.
+ * Initialize a bson_t and bson_iter_t, or set exception and return FALSE.
+ */
+static int
+bson_doc_iter_init(BSONDocument *doc, bson_and_iter_t *bson_and_iter)
+{
+    bson_uint8_t *buffer_ptr = (bson_uint8_t *)PyByteArray_AsString(doc->array)
+                               + doc->offset;
+
+    if (!bson_init_static(
+            &bson_and_iter->bson,
+            buffer_ptr,
+            doc->length))
+        goto error;
+
+    if (!bson_iter_init(&bson_and_iter->iter, &bson_and_iter->bson))
+        goto error;
+
+    return TRUE;
+
+error:
+    PyErr_SetString(PyExc_RuntimeError,
+                    "Internal error in bson_doc_iter_init.");
+    return FALSE;
+}
+
+/*
+ * Replace linear access with a hash table, or set exception and return FALSE.
+ * Does not release the buffer.
+ *
+ * TODO: preserve key order.
  */
 int
-inflate(BSONDocument *doc)
+bson_doc_inflate(BSONDocument *doc)
 {
+    PyObject *value = NULL;
+    bson_and_iter_t bson_and_iter;
+    if (IS_INFLATED(doc))
+        return TRUE;
 
-    return -1;
+    if (!bson_doc_iter_init(doc, &bson_and_iter))
+        goto error;
+
+    while (bson_iter_next(&bson_and_iter.iter)) {
+        value = bson_iter_py_value(&bson_and_iter.iter);
+        if (!value) {
+            PyErr_SetString(PyExc_RuntimeError,
+                            "Internal error in bson_doc_inflate.");
+            goto error;
+        }
+
+        if (PyDict_SetItemString(
+            (PyObject *)doc,
+            bson_iter_key(&bson_and_iter.iter),
+            value) < 0)
+        {
+            PyDict_Clear((PyObject *)doc);
+            goto error;
+        }
+
+        Py_DECREF(value);
+    }
+
+    doc->n_accesses = INFLATED;
+    return TRUE;
+
+error:
+    Py_XDECREF(value);
+    return FALSE;
+}
+
+/*
+ * Call inflate() and release the buffer, or set exception and return FALSE.
+ */
+int
+bson_doc_detach(BSONDocument *doc)
+{
+    if (!bson_doc_inflate(doc))
+        return FALSE;
+
+    Py_CLEAR(doc->array);
+    return TRUE;
 }
 
 static Py_ssize_t
-bson_doc_length(BSONDocument *doc)
+bson_doc_size(BSONDocument *doc)
 {
     Py_ssize_t ret = 0;
-    bson_t bson;
-    bson_iter_t iter;
-    bson_uint8_t *buffer_ptr;
-    buffer_ptr = (bson_uint8_t *)PyByteArray_AsString(doc->array)
-                 + doc->offset;
-
-    if (!bson_init_static(
-            &bson,
-            buffer_ptr,
-            doc->length)) {
-        goto error;
-    }
-    if (!bson_iter_init(&iter, &bson)) {
-        bson_destroy(&bson);
-        goto error;
+    bson_and_iter_t bson_and_iter;
+    if (!IS_INFLATED(doc)) {
+        ++doc->n_accesses;
+        if (SHOULD_INFLATE(doc)) {
+            if (!bson_doc_detach(doc))
+                goto error;
+        }
     }
 
-    while (bson_iter_next(&iter)) ++ret;
-    bson_destroy(&bson);
-    ++doc->n_accesses;
+    if (IS_INFLATED(doc))
+        return PyDict_Size((PyObject *)doc);
+
+    if (!bson_doc_iter_init(doc, &bson_and_iter))
+        goto error;
+
+    while (bson_iter_next(&bson_and_iter.iter)) ++ret;
     return ret;
 
 error:
@@ -114,27 +190,25 @@ bson_doc_subscript(PyObject *self, PyObject *key)
 {
     BSONDocument *doc = (BSONDocument *)self;
     PyObject *ret = NULL;
-    const char *cstring_key;
-    unsigned char bson_initialized = FALSE;
-    bson_t bson;
-    bson_iter_t iter;
-    bson_uint8_t *buffer_ptr;
+    bson_and_iter_t bson_and_iter;
+    const char *cstring_key = NULL;
+
+    if (!IS_INFLATED(doc)) {
+        ++doc->n_accesses;
+        if (SHOULD_INFLATE(doc)) {
+            if (!bson_doc_detach(doc))
+                goto error;
+        }
+    }
+
+    if (IS_INFLATED(doc))
+        return PyDict_GetItem((PyObject *)doc, key);
 
     cstring_key = PyString_AsString(key);
     if (!cstring_key) {
         goto error;
     }
-    buffer_ptr = (bson_uint8_t *)PyByteArray_AsString(doc->array)
-                 + doc->offset;
-
-    if (!bson_init_static(
-            &bson,
-            buffer_ptr,
-            doc->length)) {
-        goto error;
-    }
-    bson_initialized = TRUE;
-    if (!bson_iter_init(&iter, &bson)) {
+    if (!bson_doc_iter_init(doc, &bson_and_iter)) {
         /*
          * TODO: Raise InvalidBSON. Refactor error-raising code from
          * _cbsonmodule.c and bson_buffer.c first.
@@ -144,35 +218,29 @@ bson_doc_subscript(PyObject *self, PyObject *key)
     /*
      * TODO: we could use bson_iter_find_with_len if it were public.
      */
-    if (!bson_iter_find(&iter, cstring_key)) {
+    if (!bson_iter_find(&bson_and_iter.iter, cstring_key)) {
         PyErr_SetObject(PyExc_KeyError, key);
         goto error;
     }
 
-    ++doc->n_accesses;
-    ret = bson_iter_py_value(&iter);
+    ret = bson_iter_py_value(&bson_and_iter.iter);
     if (!ret)
         goto error;
 
-    bson_destroy(&bson);
     return ret;
 
 error:
-    if (bson_initialized) {
-        bson_destroy(&bson);
-    }
     Py_XDECREF(ret);
     return NULL;
-
 }
 
 static int
-bson_doc_ass_sub(PyDictObject *mp, PyObject *v, PyObject *w)
+bson_doc_ass_sub(BSONDocument *doc, PyObject *v, PyObject *w)
 {
-    /*
-     * TODO
-     */
-    return -1;
+    if (!bson_doc_detach(doc))
+        return -1;
+
+    return PyDict_SetItem((PyObject *)doc, v, w);
 }
 
 static PyObject *
@@ -180,49 +248,41 @@ bson_doc_keys(PyObject *self, PyObject *args)
 {
     BSONDocument *doc = (BSONDocument *)self;
     PyObject *py_key = NULL;
-    bson_t bson;
-    bson_iter_t iter;
+    bson_and_iter_t bson_and_iter;
     const char *key;
-    bson_uint8_t *buffer_ptr;
+    PyObject *ret = NULL;
 
-    PyObject *ret = PyList_New(0);
-    if (!ret) {
-        goto error;
-    }
-    buffer_ptr = (bson_uint8_t *)PyByteArray_AsString(doc->array)
-                 + doc->offset;
-
-    if (!bson_init_static(
-            &bson,
-            buffer_ptr,
-            doc->length)) {
-        goto error;
-    }
-
-    if (!bson_iter_init(&iter, &bson)) {
-        bson_destroy(&bson);
-        goto error;
-    }
-
-    while (bson_iter_next(&iter)) {
-        key = bson_iter_key(&iter);
-        if (!key) {
-            bson_destroy(&bson);
-            goto error;
+    if (!IS_INFLATED(doc)) {
+        ++doc->n_accesses;
+        if (SHOULD_INFLATE(doc)) {
+            if (!bson_doc_detach(doc))
+                goto error;
         }
+    }
+
+    if (IS_INFLATED(doc))
+        return PyDict_Keys((PyObject *)doc);
+
+    ret = PyList_New(0);
+    if (!ret)
+        goto error;
+
+    if (!bson_doc_iter_init(doc, &bson_and_iter))
+        goto error;
+
+    while (bson_iter_next(&bson_and_iter.iter)) {
+        key = bson_iter_key(&bson_and_iter.iter);
+        if (!key)
+            goto error;
+
         py_key = PyString_FromString(key);
-        if (!py_key) {
-            bson_destroy(&bson);
+        if (!py_key)
             goto error;
-        }
 
-        if (PyList_Append(ret, py_key) < 0) {
-            bson_destroy(&bson);
+        if (PyList_Append(ret, py_key) < 0)
             goto error;
-        }
     }
 
-    bson_destroy(&bson);
     return ret;
 
 error:
@@ -298,8 +358,8 @@ static PyMethodDef BSONDocument_methods[] = {
 };
 
 static PyMappingMethods bson_doc_as_mapping = {
-    (lenfunc)bson_doc_length, /* mp_length */
-    (binaryfunc)bson_doc_subscript, /* mp_subscript */
+    (lenfunc)bson_doc_size,          /* mp_length */
+    (binaryfunc)bson_doc_subscript,  /* mp_subscript */
     (objobjargproc)bson_doc_ass_sub, /* mp_ass_subscript */
 };
 
@@ -423,10 +483,5 @@ init_bson_document(PyObject* module)
     if (PyType_Ready(&BSONDocument_Type) < 0)
         return -1;
 
-    Py_INCREF(&BSONDocument_Type);
-    if (PyModule_AddObject(module, "BSONDocument",
-                           (PyObject *)&BSONDocument_Type) < 0) {
-        return -1;
-    }
     return 0;
 }

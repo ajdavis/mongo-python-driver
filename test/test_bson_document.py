@@ -24,24 +24,23 @@ sys.path[0:0] = [""]
 from nose.plugins.skip import SkipTest
 
 try:
-    from bson._cbson import BSONBuffer, BSONDocument
+    from bson._cbson import BSONBuffer
 except ImportError:
     BSONBuffer = None
-    BSONDocument = None
 
 
 class TestBSONDocument(unittest.TestCase):
     def setUp(self):
-        if not BSONDocument:
+        if not BSONBuffer:
             raise SkipTest("_cbson not compiled")
 
-    def test_bson_document(self):
-        # No error.
-        str(BSONDocument())
-
-        # Doesn't accept input.
-        self.assertRaises(TypeError, BSONDocument, {})
-        self.assertRaises(TypeError, BSONDocument, kw=1)
+    def test_inflate(self):
+        array = bytearray(BSON.encode(SON([('foo', 'bar')])))
+        buf = BSONBuffer(array)
+        doc1 = next(buf)
+        self.assertEqual('bar', doc1['foo'])
+        doc1['a'] = 1
+        self.assertEqual(1, doc1['a'])
 
     def test_iteritems(self):
         array = bytearray(BSON.encode(SON([('foo', 'bar'), ('oof', 1)])))

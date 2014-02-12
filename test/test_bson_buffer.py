@@ -26,9 +26,8 @@ from bson import BSON, SON, EMPTY, InvalidBSON
 from bson.py3compat import b
 
 try:
-    from bson._cbson import BSONDocument, BSONBuffer
+    from bson._cbson import BSONBuffer
 except ImportError:
-    BSONDocument = None
     BSONBuffer = None
 
 
@@ -44,11 +43,15 @@ class TestBSONBuffer(unittest.TestCase):
         self.array = bytearray(self.bson_bytes)
 
     def test_bson_buffer(self):
+        # Requires an argument.
+        self.assertRaises(BSONBuffer)
+
         buf = BSONBuffer(self.array)
         self.assertTrue(isinstance(buf, BSONBuffer))
         doc0, doc1 = buf
 
-        self.assertTrue(isinstance(doc0, BSONDocument))
+        # TODO:
+        # self.assertEqual("{'foo': 'bar', 'oof': 1}", str(doc0))
         self.assertEqual(['foo', 'oof'], doc0.keys())
         self.assertEqual(2, len(doc0))
         self.assertEqual('bar', doc0['foo'])
@@ -60,7 +63,8 @@ class TestBSONBuffer(unittest.TestCase):
         else:
             self.fail('Expected KeyError')
 
-        self.assertTrue(isinstance(doc1, BSONDocument))
+        # TODO:
+        # self.assertEqual("{'fiddle': 'fazzle'}", str(doc0))
         self.assertEqual(['fiddle'], doc1.keys())
         self.assertEqual(1, len(doc1))
         self.assertEqual('fazzle', doc1['fiddle'])
@@ -75,7 +79,6 @@ class TestBSONBuffer(unittest.TestCase):
         self.assertTrue(isinstance(buf, BSONBuffer))
         
         doc = next(buf)
-        self.assertTrue(isinstance(doc, BSONDocument))
         self.assertEqual([], doc.keys())
         self.assertEqual(0, len(doc))
 

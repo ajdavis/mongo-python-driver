@@ -39,6 +39,19 @@ PyObject *
 bson_iter_py_value(bson_iter_t *iter);
 
 /*
+ * Replace linear access with a hash table.
+ * Does not release the buffer. Returns TRUE on success.
+ */
+int
+bson_doc_inflate(BSONDocument *doc);
+
+/*
+ * Call inflate() and release the buffer. Returns TRUE on success.
+ */
+int
+bson_doc_detach(BSONDocument *doc);
+
+/*
  * Create a BSONDocument from a bytearray and offsets.
  */
 PyObject *
