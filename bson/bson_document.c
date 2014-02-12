@@ -455,7 +455,8 @@ BSONDocument_New(PyObject *array, bson_off_t start, bson_off_t end)
 
     /*
      * PyType_GenericNew seems unable to create a dict or a subclass of it.
-     * TODO: why?
+     * TODO: Why? I'm confused about the relationship of this and
+     *       BSONDocument_init.
      */
     doc = (BSONDocument*)PyObject_Call(
         (PyObject *)&BSONDocument_Type, init_args, NULL);
