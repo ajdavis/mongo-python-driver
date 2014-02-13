@@ -28,6 +28,9 @@ typedef struct {
     bson_reader_t *reader;
 } BSONBuffer;
 
+void
+bson_buffer_attach_doc(BSONBuffer *buffer, struct BSONDocument *doc);
+
 /*
  * Add BSONBuffer and related functions to module.
  */

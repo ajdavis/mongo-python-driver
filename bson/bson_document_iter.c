@@ -66,7 +66,7 @@ static PyObject *BSONDocIter_NextItem(bson_doc_iterobject *iter)
         if (!key)
             goto error;
 
-        value = bson_iter_py_value(bson_iter);
+        value = bson_iter_py_value(bson_iter, doc->buffer);
         if (!value)
             goto error;
 

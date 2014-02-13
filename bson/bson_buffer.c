@@ -25,7 +25,7 @@
 /*
  * Add doc to list of dependents.
  */
-static void
+void
 bson_buffer_attach_doc(BSONBuffer *buffer, BSONDocument *doc)
 {
     DL_APPEND(buffer->dependents, doc);

@@ -17,9 +17,11 @@
 #ifndef DECODING_HELPERS_H
 #define DECODING_HELPERS_H
 
-#include "bson.h"
+#include "bson.h"  // MongoDB, Inc.'s libbson project
+
+#include "bson_buffer.h"
 
 PyObject *
-bson_iter_py_value(bson_iter_t *iter);
+bson_iter_py_value(bson_iter_t *iter, BSONBuffer *buffer);
 
 #endif /* DECODING_HELPERS_H */

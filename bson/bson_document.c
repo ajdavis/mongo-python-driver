@@ -93,7 +93,7 @@ bson_doc_inflate(BSONDocument *doc)
         goto error;
 
     while (bson_iter_next(&bson_and_iter.iter)) {
-        value = bson_iter_py_value(&bson_and_iter.iter);
+        value = bson_iter_py_value(&bson_and_iter.iter, doc->buffer);
         if (!value) {
             PyErr_SetString(PyExc_RuntimeError,
                             "Internal error in bson_doc_inflate.");
@@ -134,6 +134,9 @@ bson_doc_detach(BSONDocument *doc)
     return TRUE;
 }
 
+/*
+ * TODO: consistenter naming.
+ */
 static Py_ssize_t
 BSONDoc_Size(BSONDocument *doc)
 {
@@ -176,8 +179,15 @@ BSONDoc_Subscript(PyObject *self, PyObject *key)
         }
     }
 
-    if (IS_INFLATED(doc))
-        return PyDict_GetItem((PyObject *)doc, key);
+    if (IS_INFLATED(doc)) {
+        ret = PyDict_GetItem((PyObject *)doc, key);
+        if (!ret) {
+            /* PyDict_GetItem doesn't set exception. */
+            PyErr_SetObject(PyExc_KeyError, key);
+        }
+
+        return ret;
+    }
 
     cstring_key = PyString_AsString(key);
     if (!cstring_key) {
@@ -198,7 +208,7 @@ BSONDoc_Subscript(PyObject *self, PyObject *key)
         goto error;
     }
 
-    ret = bson_iter_py_value(&bson_and_iter.iter);
+    ret = bson_iter_py_value(&bson_and_iter.iter, doc->buffer);
     if (!ret)
         goto error;
 
@@ -374,8 +384,15 @@ static PyMappingMethods bson_doc_as_mapping = {
     (objobjargproc)BSONDoc_AssignSubscript, /* mp_ass_subscript */
 };
 
+static void
+BSONDocument_Dealloc(BSONDocument* doc)
+{
+    bson_doc_detach_buffer(doc);
+    PyDict_Type.tp_dealloc((PyObject *)doc);
+}
+
 static int
-BSONDocument_init(BSONDocument *self, PyObject *args, PyObject *kwds)
+BSONDocument_init(BSONDocument *doc, PyObject *args, PyObject *kwds)
 {
 	/*
 	 * TODO: accept a buffer, offset, and length.
@@ -385,13 +402,13 @@ BSONDocument_init(BSONDocument *self, PyObject *args, PyObject *kwds)
     	PyErr_SetString(PyExc_TypeError, "BSONDocument takes no arguments");
     	return -1;
     }
-    if (PyDict_Type.tp_init((PyObject *)self, args, kwds) < 0) {
+    if (PyDict_Type.tp_init((PyObject *)doc, args, kwds) < 0) {
         return -1;
     }
-    self->buffer = NULL;
-    self->offset = 0;
-    self->length = 0;
-    self->n_accesses = 0;
+    doc->buffer = NULL;
+    doc->offset = 0;
+    doc->length = 0;
+    doc->n_accesses = 0;
     return 0;
 }
 
@@ -401,7 +418,7 @@ static PyTypeObject BSONDocument_Type = {
     "bson.BSONDocument",     /* tp_name */
     sizeof(BSONDocument),    /* tp_basicsize */
     0,                       /* tp_itemsize */
-    0,                       /* tp_dealloc */
+    (destructor)BSONDocument_Dealloc, /* tp_dealloc */
     0,                       /* tp_print */
     0,                       /* tp_getattr */
     0,                       /* tp_setattr */
@@ -439,6 +456,9 @@ static PyTypeObject BSONDocument_Type = {
     0,                       /* tp_new */
 };
 
+/*
+ * TODO: start and length might be cleaner than start and end.
+ */
 BSONDocument *
 BSONDocument_New(BSONBuffer *buffer, bson_off_t start, bson_off_t end)
 {
