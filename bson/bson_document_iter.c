@@ -36,7 +36,7 @@ typedef struct {
 } bson_doc_iterobject;
 
 static void
-bson_doc_iter_dealloc(bson_doc_iterobject *iter)
+BSONDocIter_Dealloc(bson_doc_iterobject *iter)
 {
     Py_XDECREF(iter->doc);
     PyObject_Del(iter);
@@ -46,7 +46,7 @@ bson_doc_iter_dealloc(bson_doc_iterobject *iter)
  * Get the next (key, value) from a BSONDocument's iteritems().
  * iter's type is BSONDocumentIterItem_Type.
  */
-static PyObject *bson_doc_iter_nextitem(bson_doc_iterobject *iter)
+static PyObject *BSONDocIter_NextItem(bson_doc_iterobject *iter)
 {
     PyObject *key = NULL;
     PyObject *value = NULL;
@@ -92,10 +92,10 @@ error:
 PyTypeObject BSONDocumentIterItem_Type = {
     PyVarObject_HEAD_INIT(&PyType_Type, 0)
     "BSONDocument iterator",                    /* tp_name */
-    sizeof(bson_doc_iterobject),                     /* tp_basicsize */
+    sizeof(bson_doc_iterobject),                /* tp_basicsize */
     0,                                          /* tp_itemsize */
     /* methods */
-    (destructor)bson_doc_iter_dealloc,          /* tp_dealloc */
+    (destructor)BSONDocIter_Dealloc,            /* tp_dealloc */
     0,                                          /* tp_print */
     0,                                          /* tp_getattr */
     0,                                          /* tp_setattr */
@@ -117,7 +117,7 @@ PyTypeObject BSONDocumentIterItem_Type = {
     0,                                          /* tp_richcompare */
     0,                                          /* tp_weaklistoffset */
     PyObject_SelfIter,                          /* tp_iter */
-    (iternextfunc)bson_doc_iter_nextitem,       /* tp_iternext */
+    (iternextfunc)BSONDocIter_NextItem,         /* tp_iternext */
     0,                                          /* tp_methods */
     0,                                          /* tp_members */
 };
@@ -137,9 +137,9 @@ bson_doc_iter_new(BSONDocument *doc, PyTypeObject *itertype)
     iter->doc = doc;
 
     /*
-     * TODO: refactor.
+     * TODO: refactor. And what if doc is inflated?
      */
-    buffer_ptr = (bson_uint8_t *)PyByteArray_AsString(doc->array)
+    buffer_ptr = (bson_uint8_t *)PyByteArray_AsString(doc->buffer->array)
                  + doc->offset;
 
     if (!bson_init_static(
@@ -164,7 +164,7 @@ error:
  */
 
 PyObject *
-bson_doc_iteritems(BSONDocument *doc)
+BSONDoc_IterItems(BSONDocument *doc)
 {
     return (PyObject *)bson_doc_iter_new(doc, &BSONDocumentIterItem_Type);
 }

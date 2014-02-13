@@ -14,15 +14,24 @@
  * limitations under the License.
  */
 
-/*
- * A BSONBuffer over a bytearray of BSON documents.
- */
-PyObject *
-BSONBuffer_New(PyObject *array);
+#ifndef BSON_BUFFER_H
+#define BSON_BUFFER_H
 
+struct BSONDocument; // forward declaration.
+
+typedef struct {
+    PyObject_HEAD
+    /* Doubly-linked list of active BSONDocuments referring to this buffer. */
+    struct BSONDocument *dependents;
+    /* A bytearray. */
+    PyObject *array;
+    bson_reader_t *reader;
+} BSONBuffer;
 
 /*
  * Add BSONBuffer and related functions to module.
  */
 int
 init_bson_buffer(PyObject* module);
+
+#endif /* BSON_BUFFER_H */

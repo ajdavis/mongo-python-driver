@@ -69,6 +69,31 @@ class TestBSONBuffer(unittest.TestCase):
         self.assertEqual(1, len(doc1))
         self.assertEqual('fazzle', doc1['fiddle'])
 
+    def test_explicit_inflate(self):
+        buf = BSONBuffer(self.array)
+        doc0, doc1 = buf
+        self.assertFalse(doc0.inflated())
+        doc0.inflate()
+        self.assertTrue(doc0.inflated())
+
+    def test_inflate_after_accesses(self):
+        buf = BSONBuffer(self.array)
+        doc0, doc1 = buf
+        self.assertFalse(doc0.inflated())
+        for _ in range(10):
+            doc0['foo']
+
+        self.assertTrue(doc0.inflated())
+
+    def test_inflate_when_buffer_destroyed(self):
+        buf = BSONBuffer(self.array)
+        doc0, doc1 = buf
+        self.assertFalse(doc0.inflated())
+        self.assertFalse(doc0.inflated())
+        del buf
+        self.assertTrue(doc0.inflated())
+        self.assertTrue(doc1.inflated())
+
     def test_invalid(self):
         bson_bytes = EMPTY.join([
             BSON.encode({}),

@@ -19,17 +19,30 @@
 
 #include "bson.h"
 
-typedef struct {
+#include "bson_buffer.h"
+
+/*
+ * When first created, a document is a pointer into the BSON buffer. If it
+ * is inflated (either from frequent lookups by key, or because the buffer
+ * is deallocated), it fills out the dict and dereferences the buffer.
+ *
+ * All documents for a single buffer are stored in a doubly-linked list so
+ * they can be notified when the buffer is being deallocated. Their position
+ * in the list is unrelated to their offset in the buffer.
+ */
+typedef struct BSONDocument {
     /* Superclass. */
     PyDictObject dict;
-    /* bytearray from which we're reading */
-    PyObject *array;
-    /* This document's offset into array */
+    /* Buffer from which we're reading. Not reference-counted. */
+    BSONBuffer *buffer;
+    /* This document's offset into array. */
     bson_off_t offset;
-    /* This document's length */
+    /* This document's length. */
     bson_size_t length;
-    /* How many times have we been accessed? */
+    /* How many times were we accessed before inflating? */
     unsigned char n_accesses;
+    /* Neighbors in list of documents, all pointing to the same buffer. */
+    struct BSONDocument *prev, *next;
 } BSONDocument;
 
 /*
@@ -52,10 +65,10 @@ int
 bson_doc_detach(BSONDocument *doc);
 
 /*
- * Create a BSONDocument from a bytearray and offsets.
+ * Create a BSONDocument.
  */
-PyObject *
-BSONDocument_New(PyObject *array, bson_off_t start, bson_off_t end);
+BSONDocument *
+BSONDocument_New(BSONBuffer *buffer, bson_off_t start, bson_off_t end);
 
 /*
  * Add BSONDocument and related functions to module.

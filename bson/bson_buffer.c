@@ -15,31 +15,36 @@
  */
 
 #include "Python.h"
+
 #include "bson.h"  // MongoDB, Inc.'s libbson project
+#include "utlist.h"
 
 #include "bson_document.h"
 #include "bson_buffer.h"
 
-typedef struct {
-    PyObject_HEAD
-    PyObject *array;  // TODO: rename buffer?
-    bson_reader_t *reader;
-} BSONBuffer;
+/*
+ * Add doc to list of dependents.
+ */
+static void
+bson_buffer_attach_doc(BSONBuffer *buffer, BSONDocument *doc)
+{
+    DL_APPEND(buffer->dependents, doc);
+}
 
-PyObject *
-bson_buffer_iter(PyObject *self) {
+static PyObject *
+BSONBuffer_Iter(PyObject *self) {
     Py_INCREF(self);
     return self;
 }
 
-PyObject *
-bson_buffer_iternext(PyObject *self) {
+static PyObject *
+BSONBuffer_IterNext(PyObject *self) {
     bson_off_t start;
     bson_off_t end;
     bson_bool_t eof = FALSE;
-    PyObject *doc = NULL;
-    BSONBuffer *iter = (BSONBuffer *)self;
-    bson_reader_t *reader = iter->reader;
+    BSONDocument *doc = NULL;
+    BSONBuffer *buffer = (BSONBuffer *)self;
+    bson_reader_t *reader = buffer->reader;
 
     if (!reader) {
         /*
@@ -50,14 +55,15 @@ bson_buffer_iternext(PyObject *self) {
     }
 
     start = bson_reader_tell(reader);
-    /* TODO: useful? or just read the length prefix ? */
+    /*
+     * TODO: useful? or just read the length prefix ?
+     */
     if (!bson_reader_read(reader, &eof)) {
         /*
          * This was the last document, or there was an error.
          */
         bson_reader_destroy(reader);
-        reader = iter->reader = NULL;
-        Py_CLEAR(iter->array);
+        reader = buffer->reader = NULL;
         if (eof) {
             /*
              * Normal completion.
@@ -82,11 +88,12 @@ bson_buffer_iternext(PyObject *self) {
     }
 
     end = bson_reader_tell(reader);
-    doc = BSONDocument_New(iter->array, start, end);
+    doc = BSONDocument_New(buffer, start, end);
     if (!doc)
         goto error;
 
-    return doc;
+    bson_buffer_attach_doc(buffer, doc);
+    return (PyObject *)doc;
 
 error:
     /*
@@ -97,13 +104,13 @@ error:
         bson_reader_destroy(reader);
     }
 
-    iter->reader = NULL;
+    buffer->reader = NULL;
     Py_XDECREF(doc);
     return NULL;
 }
 
 int
-bson_buffer_init(BSONBuffer *self, PyObject *args, PyObject *kwds)
+BSONBuffer_Init(BSONBuffer *self, PyObject *args, PyObject *kwds)
 {
     /*
      * TODO: Does this have to be a separate allocation from the BSONBuffer?
@@ -131,6 +138,7 @@ bson_buffer_init(BSONBuffer *self, PyObject *args, PyObject *kwds)
     Py_INCREF(array);
     self->array = array;
     self->reader = reader;
+    self->dependents = NULL;
     return 0;
 
 error:
@@ -143,13 +151,33 @@ error:
     return -1;
 }
 
+static void
+BSONBuffer_Dealloc(BSONBuffer* self)
+{
+    BSONDocument *doc;
+
+    /*
+     * Order of destruction matters. Note that bson_doc_inflate() doesn't
+     * affect our list of dependents or our reference count.
+     */
+    DL_FOREACH(self->dependents, doc) {
+        bson_doc_inflate(doc);
+    }
+
+    if (self->reader)
+        bson_reader_destroy(self->reader);
+
+    Py_XDECREF(self->array);
+    self->ob_type->tp_free((PyObject*)self);
+}
+
 static PyTypeObject BSONBuffer_Type = {
     PyObject_HEAD_INIT(NULL)
     0,                         /*ob_size*/
     "bson.BSONBuffer",         /*tp_name*/
     sizeof(BSONBuffer),        /*tp_basicsize*/
     0,                         /*tp_itemsize*/
-    0,                         /*tp_dealloc*/
+    (destructor)BSONBuffer_Dealloc, /*tp_dealloc*/
     0,                         /*tp_print*/
     0,                         /*tp_getattr*/
     0,                         /*tp_setattr*/
@@ -172,8 +200,8 @@ static PyTypeObject BSONBuffer_Type = {
     0,                         /* tp_clear */
     0,                         /* tp_richcompare */
     0,                         /* tp_weaklistoffset */
-    bson_buffer_iter,          /* tp_iter: __iter__() method */
-    bson_buffer_iternext,      /* tp_iternext: next() method */
+    BSONBuffer_Iter,           /* tp_iter: __iter__() method */
+    BSONBuffer_IterNext,       /* tp_iternext: next() method */
     0,                         /* tp_methods */
     0,                         /* tp_members */
     0,                         /* tp_getset */
@@ -182,52 +210,10 @@ static PyTypeObject BSONBuffer_Type = {
     0,                         /* tp_descr_get */
     0,                         /* tp_descr_set */
     0,                         /* tp_dictoffset */
-    (initproc)bson_buffer_init, /* tp_init */
+    (initproc)BSONBuffer_Init, /* tp_init */
     0,                         /* tp_alloc */
-    0,                         /* tp_new */};
-
-PyObject *
-BSONBuffer_New(PyObject *array)
-{
-    BSONBuffer *ret = NULL;
-    bson_size_t buffer_size;
-    /*
-     * TODO: Does this have to be a separate allocation from the BSONBuffer?
-     */
-    bson_reader_t *reader = NULL;
-
-    if (!array || !PyByteArray_Check(array)) {
-        PyErr_SetString(PyExc_TypeError, "array must be a bytearray.");
-        goto error;
-    }
-
-    buffer_size = PyByteArray_Size(array);
-    reader = bson_reader_new_from_data(
-            (bson_uint8_t *)PyByteArray_AsString(array),
-            buffer_size);
-
-    if (!reader) {
-        goto error;
-    }
-
-    ret = PyObject_New(BSONBuffer,
-                       &BSONBuffer_Type);
-    if (!ret)
-        goto error;
-
-    Py_INCREF(array);
-    ret->array = array;
-    ret->reader = reader;
-    return (PyObject *)ret;
-
-error:
-    Py_XDECREF(ret);
-    if (reader) {
-        bson_reader_destroy(reader);
-    }
-
-    return NULL;
-}
+    0,                         /* tp_new */
+};
 
 int
 init_bson_buffer(PyObject* module)
