@@ -30,7 +30,7 @@
 //bson_doc_itervalues(BSONDocument *doc);
 
 PyObject *
-BSONDoc_IterItems(BSONDocument *doc);
+BSONDocument_IterItems(BSONDocument *doc);
 
 int
 init_bson_document_iter(PyObject *module);

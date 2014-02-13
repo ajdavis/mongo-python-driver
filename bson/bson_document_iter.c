@@ -165,7 +165,7 @@ error:
  */
 
 PyObject *
-BSONDoc_IterItems(BSONDocument *doc)
+BSONDocument_IterItems(BSONDocument *doc)
 {
     return (PyObject *)bson_doc_iter_new(doc, &BSONDocumentIterItem_Type);
 }

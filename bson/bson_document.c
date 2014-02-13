@@ -134,11 +134,8 @@ bson_doc_detach(BSONDocument *doc)
     return TRUE;
 }
 
-/*
- * TODO: consistenter naming.
- */
 static Py_ssize_t
-BSONDoc_Size(BSONDocument *doc)
+BSONDocument_Size(BSONDocument *doc)
 {
     Py_ssize_t ret = 0;
     bson_and_iter_t bson_and_iter;
@@ -164,7 +161,7 @@ error:
 }
 
 static PyObject *
-BSONDoc_Subscript(PyObject *self, PyObject *key)
+BSONDocument_Subscript(PyObject *self, PyObject *key)
 {
     BSONDocument *doc = (BSONDocument *)self;
     PyObject *ret = NULL;
@@ -220,7 +217,7 @@ error:
 }
 
 static int
-BSONDoc_AssignSubscript(BSONDocument *doc, PyObject *v, PyObject *w)
+BSONDocument_AssignSubscript(BSONDocument *doc, PyObject *v, PyObject *w)
 {
     if (!bson_doc_detach(doc))
         return -1;
@@ -229,7 +226,7 @@ BSONDoc_AssignSubscript(BSONDocument *doc, PyObject *v, PyObject *w)
 }
 
 static PyObject *
-BSONDoc_Keys(PyObject *self, PyObject *args)
+BSONDocument_Keys(PyObject *self, PyObject *args)
 {
     BSONDocument *doc = (BSONDocument *)self;
     PyObject *py_key = NULL;
@@ -277,13 +274,7 @@ error:
 }
 
 /*
- * TODO:
- *  - Write an 'inflate' method that creates the dict, stores the key order,
- *    and releases the buffer.
- *  - Triggered by modifications to the dict, or n_accesses > threshold, or
- *    buffer is being deallocated.
- *
- * For each PyDict_Type method, make a method that:
+ * TODO: For each PyDict_Type method, make a method that:
  *  - If this is already inflated, call dict method
  *  - If the method would modify, ensure inflated and call dict method
  *  - Else increment n_accesses and call libbson method
@@ -328,7 +319,7 @@ static PyMethodDef BSONDocument_methods[] = {
          */
 //    {"__contains__",    (PyCFunction)bson_doc_contains,     METH_O | METH_COEXIST,
 //     contains__doc__},
-    {"__getitem__",     (PyCFunction)BSONDoc_Subscript,    METH_O | METH_COEXIST,
+    {"__getitem__",     (PyCFunction)BSONDocument_Subscript, METH_O | METH_COEXIST,
      getitem__doc__},
 //    {"__sizeof__",      (PyCFunction)bson_doc_sizeof,       METH_NOARGS,
 //     sizeof__doc__},
@@ -342,7 +333,7 @@ static PyMethodDef BSONDocument_methods[] = {
 //     pop__doc__},
 //    {"popitem",         (PyCFunction)bson_doc_popitem,      METH_NOARGS,
 //     popitem__doc__},
-    {"keys",            (PyCFunction)BSONDoc_Keys,         METH_NOARGS,
+    {"keys",            (PyCFunction)BSONDocument_Keys, METH_NOARGS,
      keys__doc__},
 //    {"items",           (PyCFunction)bson_doc_items,        METH_NOARGS,
 //     items__doc__},
@@ -366,22 +357,22 @@ static PyMethodDef BSONDocument_methods[] = {
 //     iterkeys__doc__},
 //    {"itervalues",      (PyCFunction)bson_doc_itervalues,   METH_NOARGS,
 //     itervalues__doc__},
-    {"iteritems",       (PyCFunction)BSONDoc_IterItems,    METH_NOARGS,
+    {"iteritems",       (PyCFunction)BSONDocument_IterItems, METH_NOARGS,
      iteritems__doc__},
      /*
       * BSONDocument-specific methods
       */
-    {"inflate",         (PyCFunction)BSONDocument_Inflate,     METH_NOARGS,
+    {"inflate",         (PyCFunction)BSONDocument_Inflate, METH_NOARGS,
      inflate__doc__},
-    {"inflated",        (PyCFunction)BSONDocument_Inflated,    METH_NOARGS,
+    {"inflated",        (PyCFunction)BSONDocument_Inflated, METH_NOARGS,
      inflated__doc__},
     {NULL,	NULL},
 };
 
 static PyMappingMethods bson_doc_as_mapping = {
-    (lenfunc)BSONDoc_Size,          /* mp_length */
-    (binaryfunc)BSONDoc_Subscript,  /* mp_subscript */
-    (objobjargproc)BSONDoc_AssignSubscript, /* mp_ass_subscript */
+    (lenfunc)BSONDocument_Size,          /* mp_length */
+    (binaryfunc)BSONDocument_Subscript,  /* mp_subscript */
+    (objobjargproc)BSONDocument_AssignSubscript, /* mp_ass_subscript */
 };
 
 static void
