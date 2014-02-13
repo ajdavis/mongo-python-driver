@@ -19,6 +19,7 @@
 
 #include "bson_document.h"
 #include "bson_document_iter.h"
+#include "decoding_helpers.h"
 
 /*
  * BSONDocument iterator types.

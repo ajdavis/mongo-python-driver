@@ -20,50 +20,7 @@
 
 #include "bson_document.h"
 #include "bson_document_iter.h"
-
-PyObject *
-bson_iter_py_value(bson_iter_t *iter)
-{
-    PyObject *ret = NULL;
-    /*
-     * TODO: all the BSON types.
-     */
-    switch (bson_iter_type(iter)) {
-    case BSON_TYPE_UTF8:
-        {
-           bson_uint32_t utf8_len;
-           const char *utf8;
-
-           utf8 = bson_iter_utf8(iter, &utf8_len);
-           if (!bson_utf8_validate(utf8, utf8_len, TRUE)) {
-               /*
-                * TODO: set exception.
-                */
-               goto error;
-           }
-           ret = PyString_FromString(utf8);
-        }
-        break;
-    case BSON_TYPE_INT32:
-        ret = PyLong_FromLong(bson_iter_int32(iter));
-        break;
-    case BSON_TYPE_INT64:
-       ret = PyLong_FromLongLong(bson_iter_int64(iter));
-        break;
-    default:
-        PyErr_SetString(PyExc_TypeError, "Unrecognized BSON type");
-        goto error;
-    }
-
-    if (!ret)
-        goto error;
-
-    return ret;
-
-error:
-    Py_XDECREF(ret);
-    return NULL;
-}
+#include "decoding_helpers.h"
 
 #define IS_INFLATED(doc) (!doc->buffer)
 
