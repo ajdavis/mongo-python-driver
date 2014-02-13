@@ -48,6 +48,9 @@ class TestBSONBuffer(unittest.TestCase):
 
         buf = BSONBuffer(self.array)
         self.assertTrue(isinstance(buf, BSONBuffer))
+
+        # Can't get item by index.
+        self.assertRaises(TypeError, lambda: buf[0])
         doc0, doc1 = buf
 
         # TODO:
@@ -69,21 +72,9 @@ class TestBSONBuffer(unittest.TestCase):
         self.assertEqual(1, len(doc1))
         self.assertEqual('fazzle', doc1['fiddle'])
 
-    def test_explicit_inflate(self):
-        buf = BSONBuffer(self.array)
-        doc0, doc1 = buf
-        self.assertFalse(doc0.inflated())
-        doc0.inflate()
-        self.assertTrue(doc0.inflated())
-
-    def test_inflate_after_accesses(self):
-        buf = BSONBuffer(self.array)
-        doc0, doc1 = buf
-        self.assertFalse(doc0.inflated())
-        for _ in range(10):
-            doc0['foo']
-
-        self.assertTrue(doc0.inflated())
+    def test_empty(self):
+        buf = BSONBuffer(bytearray(b('')))
+        self.assertEqual([], list(buf))
 
     def test_inflate_when_buffer_destroyed(self):
         buf = BSONBuffer(self.array)
@@ -111,35 +102,6 @@ class TestBSONBuffer(unittest.TestCase):
 
         # Now the iterator is invalid.
         self.assertRaises(StopIteration, next, buf)
-
-    def test_empty(self):
-        bson_bytes = BSON.encode(SON([]))
-        array = bytearray(bson_bytes)
-        buf = BSONBuffer(array)
-        doc = next(buf)
-        self.assertEqual({}, dict(doc))
-        self.assertRaises(KeyError, lambda: doc['key'])
-
-    def test_types(self):
-        # TODO: int32
-        bson_bytes = BSON.encode(SON([
-            ('string', 'bar'),
-            ('long', 1),
-            ('document', {'k': 'v'})
-        ]))
-
-        array = bytearray(bson_bytes)
-
-
-        local_buffer = [None]
-        def get_doc():
-            # Keep recreating the doc to avoid auto-inflation.
-            local_buffer[0] = buf = BSONBuffer(array)
-            return next(buf)
-
-        self.assertEqual('bar', get_doc()['string'])
-        self.assertEqual(1, get_doc()['long'])
-        self.assertEqual('v', get_doc()['document']['k'])
 
 if __name__ == '__main__':
     unittest.main()

@@ -20,7 +20,22 @@
 #include "bson.h"  // MongoDB, Inc.'s libbson project
 
 #include "bson_buffer.h"
+#include "bson_document.h"
 
+typedef struct {
+    bson_t bson;
+    bson_iter_t iter;
+} bson_and_iter_t;
+
+/*
+ * Initialize a bson_t and bson_iter_t, or set exception and return FALSE.
+ */
+int
+bson_doc_iter_init(BSONDocument *doc, bson_and_iter_t *bson_and_iter);
+
+/*
+ * Decode the value at the current position, or set exception and return NULL.
+ */
 PyObject *
 bson_iter_py_value(bson_iter_t *iter, BSONBuffer *buffer);
 

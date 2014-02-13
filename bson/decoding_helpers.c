@@ -20,6 +20,39 @@
 #include "decoding_helpers.h"
 #include "bson_document.h"
 
+/*
+ * Initialize a bson_t and bson_iter_t, or set exception and return FALSE.
+ */
+int
+bson_doc_iter_init(BSONDocument *doc, bson_and_iter_t *bson_and_iter)
+{
+    if (!doc->buffer)
+        goto error;
+
+    bson_uint8_t *buffer_ptr =
+            (bson_uint8_t *)PyByteArray_AsString(doc->buffer->array)
+            + doc->offset;
+
+    if (!bson_init_static(
+            &bson_and_iter->bson,
+            buffer_ptr,
+            doc->length))
+        goto error;
+
+    if (!bson_iter_init(&bson_and_iter->iter, &bson_and_iter->bson))
+        goto error;
+
+    return TRUE;
+
+error:
+    PyErr_SetString(PyExc_RuntimeError,
+                    "Internal error in bson_doc_iter_init.");
+    return FALSE;
+}
+
+/*
+ * Decode the value at the current position, or set exception and return NULL.
+ */
 PyObject *
 bson_iter_py_value(bson_iter_t *iter, BSONBuffer *buffer)
 {

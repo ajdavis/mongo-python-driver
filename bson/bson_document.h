@@ -21,6 +21,8 @@
 
 #include "bson_buffer.h"
 
+#define IS_INFLATED(doc) (!doc->buffer)
+
 /*
  * When first created, a document is a pointer into the BSON buffer. If it
  * is inflated (either from frequent lookups by key, or because the buffer
@@ -43,6 +45,8 @@ typedef struct BSONDocument {
     unsigned char n_accesses;
     /* Neighbors in list of documents, all pointing to the same buffer. */
     struct BSONDocument *prev, *next;
+    /* Preserve key order after we inflate. */
+    PyObject *keys;
 } BSONDocument;
 
 /*

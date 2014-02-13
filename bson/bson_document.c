@@ -16,13 +16,11 @@
 
 #include "Python.h"
 #include "bson.h"  // MongoDB, Inc.'s libbson project
-#include "utlist.h"
 
 #include "bson_document.h"
 #include "bson_document_iter.h"
 #include "decoding_helpers.h"
-
-#define IS_INFLATED(doc) (!doc->buffer)
+#include "utlist.h"
 
 #define SHOULD_INFLATE(doc) (doc->n_accesses >= 10)
 
@@ -40,82 +38,56 @@ bson_doc_detach_buffer(BSONDocument *doc)
     }
 }
 
-typedef struct {
-    bson_t bson;
-    bson_iter_t iter;
-} bson_and_iter_t;
-
-/*
- * Initialize a bson_t and bson_iter_t, or set exception and return FALSE.
- */
-static int
-bson_doc_iter_init(BSONDocument *doc, bson_and_iter_t *bson_and_iter)
-{
-    if (!doc->buffer)
-        goto error;
-
-    bson_uint8_t *buffer_ptr =
-            (bson_uint8_t *)PyByteArray_AsString(doc->buffer->array)
-            + doc->offset;
-
-    if (!bson_init_static(
-            &bson_and_iter->bson,
-            buffer_ptr,
-            doc->length))
-        goto error;
-
-    if (!bson_iter_init(&bson_and_iter->iter, &bson_and_iter->bson))
-        goto error;
-
-    return TRUE;
-
-error:
-    PyErr_SetString(PyExc_RuntimeError,
-                    "Internal error in bson_doc_iter_init.");
-    return FALSE;
-}
-
 /*
  * Replace linear access with a hash table, or set exception and return FALSE.
  * Does not release the buffer.
- *
- * TODO: preserve key order.
  */
 int
 bson_doc_inflate(BSONDocument *doc)
 {
+    PyObject *key = NULL;
     PyObject *value = NULL;
     bson_and_iter_t bson_and_iter;
     if (IS_INFLATED(doc))
         return TRUE;
 
+    doc->keys = PyList_New(0);
+    if (!doc->keys)
+        goto error;
+
     if (!bson_doc_iter_init(doc, &bson_and_iter))
         goto error;
 
     while (bson_iter_next(&bson_and_iter.iter)) {
-        value = bson_iter_py_value(&bson_and_iter.iter, doc->buffer);
-        if (!value) {
+        key = PyString_FromString(bson_iter_key(&bson_and_iter.iter));
+        if (!key) {
             PyErr_SetString(PyExc_RuntimeError,
                             "Internal error in bson_doc_inflate.");
             goto error;
         }
 
-        if (PyDict_SetItemString(
-            (PyObject *)doc,
-            bson_iter_key(&bson_and_iter.iter),
-            value) < 0)
-        {
-            PyDict_Clear((PyObject *)doc);
+        value = bson_iter_py_value(&bson_and_iter.iter, doc->buffer);
+        if (!value)
+            /* Exception is already set. */
             goto error;
-        }
 
-        Py_DECREF(value);
+        if (PyDict_SetItem((PyObject *)doc, key, value) < 0)
+            goto error;
+
+        /* Remember key order. */
+        if (PyList_Append(doc->keys, key) < 0)
+            goto error;
+
+        Py_CLEAR(key);
+        Py_CLEAR(value);
     }
 
     bson_doc_detach_buffer(doc);
     return TRUE;
 
 error:
+    PyDict_Clear((PyObject *)doc);
+    Py_XDECREF(key);
     Py_XDECREF(value);
     return FALSE;
 }
@@ -220,6 +192,12 @@ static int
 BSONDocument_AssignSubscript(BSONDocument *doc, PyObject *v, PyObject *w)
 {
     if (!bson_doc_detach(doc))
+        return -1;
+
+    /*
+     * Put this key last.
+     */
+    if (PyList_Append(doc->keys, v) < 0)
         return -1;
 
     return PyDict_SetItem((PyObject *)doc, v, w);
@@ -480,6 +458,7 @@ BSONDocument_New(BSONBuffer *buffer, bson_off_t start, bson_off_t end)
     doc->buffer = buffer;
     doc->offset = start;
     doc->length = end - start;
+    doc->keys = NULL;
     return doc;
 }
 
