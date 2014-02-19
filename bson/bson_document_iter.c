@@ -26,15 +26,8 @@
  */
 
 /*
- * Before iterating, current_key is NULL and current_pos is -1. While iterating
- * an uninflated BSONDocument, current_key is the last returned key. If doc
- * inflates, its list of keys is filled out. On our next iteration, current_key
- * is cleared and current_pos is set.
+ * current_pos starts at 0. When iteration completes, 'doc' is null.
  *
- * When iteration completes, 'doc' is null.
- *
- * TODO: Instead of saving the key, just save how *many* keys we've seen.
- *       Might even allow us to parse docs with dupe keys, test that.
  * TODO: PyDict's iterator has a reusable PyObject *result for speed,
  *       emulate that.
  */
@@ -42,8 +35,6 @@ typedef struct {
     PyObject_HEAD
     /* Set to NULL when iterator is exhausted */
     BSONDocument *doc;
-    /* Last seen key. */
-    PyObject *current_key;
     /* Index into doc->keys. */
     Py_ssize_t current_pos;
     bson_and_iter_t bson_and_iter;
@@ -102,13 +93,7 @@ bson_iter_nextitem_uninflated(bson_doc_iterobject *iter)
      */
     PyTuple_SET_ITEM(result, 0, key);
     PyTuple_SET_ITEM(result, 1, value);
-
-    /*
-     * Remember our current key, in case doc inflates before next iteration.
-     */
-    Py_XDECREF(iter->current_key);
-    Py_INCREF(key);
-    iter->current_key = key;
+    ++iter->current_pos;
     return result;
 error:
     Py_XDECREF(key);
@@ -162,6 +147,7 @@ bson_iter_nextitem_inflated(bson_doc_iterobject *iter)
      */
     PyTuple_SET_ITEM(result, 0, key);
     PyTuple_SET_ITEM(result, 1, value);
+    ++iter->current_pos;
     return result;
 error:
     Py_XDECREF(key);
@@ -199,36 +185,6 @@ list_find(PyObject *list, PyObject *item)
 }
 
 /*
- * Convert from an iterator over an uninflated doc to an inflated one,
- * preserving position, or set exception and return FALSE;
- */
-static int
-bson_iter_inflate(bson_doc_iterobject *iter)
-{
-    Py_ssize_t pos;
-
-    assert((bool)iter);
-    assert((bool)iter->doc);
-    assert((bool)iter->doc->keys);
-    assert((bool)iter->current_key);
-
-    pos = list_find(iter->doc->keys, iter->current_key);
-    if (pos == -1) {
-        PyErr_SetString(PyExc_RuntimeError,
-                        "Internal error in bson_iter_inflate");
-        goto error;
-    }
-
-    iter->current_pos = pos;
-    Py_CLEAR(iter->current_key);
-
-    return TRUE;
-
-error:
-    return FALSE;
-}
-
-/*
  * Get the next (key, value) from a BSONDocument's iteritems().
  * iter's type is BSONDocumentIterItem_Type.
  */
@@ -241,13 +197,6 @@ BSONDocIter_NextItem(bson_doc_iterobject *iter)
 
     doc = iter->doc;
     if (doc && IS_INFLATED(doc)) {
-        if (iter->current_key) {
-            /*
-             * First iteration since the doc was inflated.
-             */
-            bson_iter_inflate(iter);
-        }
-
         /*
          * TODO: Check if doc was modified and raise.
          */
@@ -306,8 +255,7 @@ bson_doc_iter_new(BSONDocument *doc, PyTypeObject *itertype)
 
     Py_INCREF(doc);
     iter->doc = doc;
-    iter->current_key = NULL;
-    iter->current_pos = -1;
+    iter->current_pos = 0;
 
     if (!IS_INFLATED(doc)) {
         if (!bson_doc_iter_init(doc, &iter->bson_and_iter))
