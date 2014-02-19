@@ -33,6 +33,8 @@
  *
  * When iteration completes, 'doc' is null.
  *
+ * TODO: Instead of saving the key, just save how *many* keys we've seen.
+ *       Might even allow us to parse docs with dupe keys, test that.
  * TODO: PyDict's iterator has a reusable PyObject *result for speed,
  *       emulate that.
  */
@@ -50,6 +52,8 @@ typedef struct {
 static void
 BSONDocIter_Dealloc(bson_doc_iterobject *iter)
 {
+    assert((bool)iter);
+
     Py_XDECREF(iter->doc);
     PyObject_Del(iter);
 }
@@ -67,6 +71,10 @@ bson_iter_nextitem_uninflated(bson_doc_iterobject *iter)
     bson_and_iter_t *bson_and_iter;
     BSONDocument *doc = iter->doc;
     bson_and_iter = &iter->bson_and_iter;
+
+    assert((bool)iter);
+    assert((bool)doc);
+    assert((bool)doc->buffer);
 
     if (!bson_iter_next(&bson_and_iter->iter)) {
         /*
@@ -119,8 +127,14 @@ bson_iter_nextitem_inflated(bson_doc_iterobject *iter)
     PyObject *key = NULL;
     PyObject *value = NULL;
     PyObject *result = NULL;
-    BSONDocument *doc = iter->doc;
-    Py_ssize_t size = PyList_Size(doc->keys);
+    BSONDocument *doc;
+    Py_ssize_t size;
+
+    assert((bool)iter);
+    assert((bool)iter->doc);
+    doc = iter->doc;
+    assert((bool)doc->keys);
+    size = PyList_Size(doc->keys);
 
     ++iter->current_pos;
     if (iter->current_pos >= size) {
@@ -165,6 +179,10 @@ list_find(PyObject *list, PyObject *item)
 {
     Py_ssize_t size = PyList_Size(list);
     Py_ssize_t i;
+
+    assert((bool)list);
+    assert((bool)item);
+
     for (i = 0; i < size; ++i) {
         PyObject *current = PyList_GetItem(list, i);
         if (!current)
@@ -188,10 +206,14 @@ list_find(PyObject *list, PyObject *item)
 static int
 bson_iter_inflate(bson_doc_iterobject *iter)
 {
-    /*
-     * TODO: Assert doc->keys.
-     */
-    Py_ssize_t pos = list_find(iter->doc->keys, iter->current_key);
+    Py_ssize_t pos;
+
+    assert((bool)iter);
+    assert((bool)iter->doc);
+    assert((bool)iter->doc->keys);
+    assert((bool)iter->current_key);
+
+    pos = list_find(iter->doc->keys, iter->current_key);
     if (pos == -1) {
         PyErr_SetString(PyExc_RuntimeError,
                         "Internal error in bson_iter_inflate");
@@ -214,13 +236,18 @@ error:
 static PyObject *
 BSONDocIter_NextItem(bson_doc_iterobject *iter)
 {
-    BSONDocument *doc = iter->doc;
+    BSONDocument *doc;
+
+    assert((bool)iter);
+
+    doc = iter->doc;
     if (doc && IS_INFLATED(doc)) {
-        if (iter->current_key)
+        if (iter->current_key) {
             /*
              * First iteration since the doc was inflated.
              */
             bson_iter_inflate(iter);
+        }
 
         /*
          * TODO: Check if doc was modified and raise.
@@ -242,7 +269,6 @@ PyTypeObject BSONDocumentIterItem_Type = {
     "BSONDocument iterator",                    /* tp_name */
     sizeof(bson_doc_iterobject),                /* tp_basicsize */
     0,                                          /* tp_itemsize */
-    /* methods */
     (destructor)BSONDocIter_Dealloc,            /* tp_dealloc */
     0,                                          /* tp_print */
     0,                                          /* tp_getattr */
@@ -276,6 +302,8 @@ bson_doc_iter_new(BSONDocument *doc, PyTypeObject *itertype)
     bson_doc_iterobject *iter = PyObject_New(bson_doc_iterobject, itertype);
     if (!iter)
         goto error;
+
+    assert(doc);
 
     Py_INCREF(doc);
     iter->doc = doc;
