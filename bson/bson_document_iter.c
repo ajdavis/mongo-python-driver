@@ -52,7 +52,7 @@ typedef struct {
 static void
 BSONDocIter_Dealloc(bson_doc_iterobject *iter)
 {
-    assert((bool)iter);
+    assert(iter);
 
     Py_XDECREF(iter->doc);
     PyObject_Del(iter);
@@ -72,9 +72,9 @@ bson_iter_nextitem_uninflated(bson_doc_iterobject *iter)
     BSONDocument *doc = iter->doc;
     bson_and_iter = &iter->bson_and_iter;
 
-    assert((bool)iter);
-    assert((bool)doc);
-    assert((bool)doc->buffer);
+    assert(iter);
+    assert(doc);
+    assert(doc->buffer);
 
     if (!bson_iter_next(&bson_and_iter->iter)) {
         /*
@@ -130,13 +130,12 @@ bson_iter_nextitem_inflated(bson_doc_iterobject *iter)
     BSONDocument *doc;
     Py_ssize_t size;
 
-    assert((bool)iter);
-    assert((bool)iter->doc);
+    assert(iter);
+    assert(iter->doc);
     doc = iter->doc;
-    assert((bool)doc->keys);
+    assert(doc->keys);
     size = PyList_Size(doc->keys);
 
-    ++iter->current_pos;
     if (iter->current_pos >= size) {
         /*
          * Completed.
@@ -180,8 +179,8 @@ list_find(PyObject *list, PyObject *item)
     Py_ssize_t size = PyList_Size(list);
     Py_ssize_t i;
 
-    assert((bool)list);
-    assert((bool)item);
+    assert(list);
+    assert(item);
 
     for (i = 0; i < size; ++i) {
         PyObject *current = PyList_GetItem(list, i);
@@ -238,7 +237,7 @@ BSONDocIter_NextItem(bson_doc_iterobject *iter)
 {
     BSONDocument *doc;
 
-    assert((bool)iter);
+    assert(iter);
 
     doc = iter->doc;
     if (doc && IS_INFLATED(doc)) {
