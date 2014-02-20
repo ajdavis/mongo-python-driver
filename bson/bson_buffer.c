@@ -39,6 +39,18 @@ BSONBuffer_IterNext(BSONBuffer *buffer) {
     BSONDocument *doc = NULL;
     bson_reader_t *reader = buffer->reader;
 
+    if (!buffer->valid) {
+        PyObject* InvalidBSON;
+        PyObject* errors = PyImport_ImportModule("bson.errors");
+        if (!errors)
+            goto error;
+        InvalidBSON = PyObject_GetAttrString(errors, "InvalidBSON");
+        Py_DECREF(errors);
+        if (!InvalidBSON)
+            goto error;
+        PyErr_SetString(InvalidBSON, "Buffer contained invalid BSON.");
+        goto error;
+    }
     if (!reader) {
         /*
          * Finished.
@@ -91,13 +103,13 @@ BSONBuffer_IterNext(BSONBuffer *buffer) {
 error:
     /*
      * Invalidate the iterator.
-     * TODO: make future uses raise a different error than StopIteration.
      */
     if (reader) {
         bson_reader_destroy(reader);
     }
 
     buffer->reader = NULL;
+    buffer->valid = 0;
     Py_XDECREF(doc);
     return NULL;
 }
@@ -132,6 +144,7 @@ BSONBuffer_Init(BSONBuffer *self, PyObject *args, PyObject *kwds)
     self->array = array;
     self->reader = reader;
     self->dependents = NULL;
+    self->valid = 1;
     return 0;
 
 error:

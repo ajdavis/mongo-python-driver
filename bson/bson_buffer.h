@@ -26,6 +26,7 @@ typedef struct {
     /* A bytearray. */
     PyObject *array;
     bson_reader_t *reader;
+    int valid;
 } BSONBuffer;
 
 void
