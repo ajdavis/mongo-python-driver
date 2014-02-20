@@ -14,14 +14,16 @@
 
 """Test the BSONDocument type."""
 
-
 import sys
 import unittest
-from bson import SON, BSON
-
-sys.path[0:0] = [""]
+import uuid
 
 from nose.plugins.skip import SkipTest
+
+from bson import SON, BSON, Binary
+from bson.py3compat import b
+
+sys.path[0:0] = [""]
 
 try:
     from bson._cbson import BSONBuffer
@@ -62,13 +64,18 @@ class TestBSONDocument(unittest.TestCase):
         self.assertEqual([('a', 1)], list(doc.iteritems()))
 
     def test_types(self):
+        my_binary = Binary(b('foo'), subtype=2)  # Random subtype.
+        my_uuid = uuid.uuid4()
+
         bson_bytes = BSON.encode(SON([
+            ('double', 1.5),
+            ('document', {'k': 'v'}),
+            ('array', [1, 'foo', 1.5]),
+            ('binary', my_binary),
+            ('uuid', my_uuid),
             ('string', 'bar'),
             ('int', 1),
             ('long', 2 << 40),
-            ('double', 1.5),
-            ('array', [1, 'foo', 1.5]),
-            ('document', {'k': 'v'})
         ]))
 
         array = bytearray(bson_bytes)
@@ -78,12 +85,14 @@ class TestBSONDocument(unittest.TestCase):
             local_buffer[0] = buf = BSONBuffer(array)
             return next(buf)
 
+        self.assertEqual(1.5, get_doc()['double'])
+        self.assertEqual('v', get_doc()['document']['k'])
+        self.assertEqual([1, 'foo', 1.5], get_doc()['array'])
+        self.assertEqual(my_binary, get_doc()['binary'])
+        self.assertEqual(my_uuid, get_doc()['uuid'])
         self.assertEqual('bar', get_doc()['string'])
         self.assertEqual(1, get_doc()['int'])
         self.assertEqual(2 << 40, get_doc()['long'])
-        self.assertEqual(1.5, get_doc()['double'])
-        self.assertEqual([1, 'foo', 1.5], get_doc()['array'])
-        self.assertEqual('v', get_doc()['document']['k'])
 
     def test_explicit_inflate(self):
         buf = BSONBuffer(bytearray(BSON.encode({})))
