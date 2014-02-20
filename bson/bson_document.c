@@ -21,6 +21,7 @@
 #include "bson_document_iter.h"
 #include "decoding_helpers.h"
 #include "utlist.h"
+#include "invalid_bson.h"
 
 #define SHOULD_INFLATE(doc) (doc->n_accesses >= 10)
 
