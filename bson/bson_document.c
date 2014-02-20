@@ -94,6 +94,7 @@ bson_doc_inflate(BSONDocument *doc)
 
 error:
     PyDict_Clear((PyObject *)doc);
+    Py_CLEAR(doc->keys);
     Py_XDECREF(key);
     Py_XDECREF(value);
     return FALSE;
@@ -244,9 +245,10 @@ BSONDocument_Keys(PyObject *self, PyObject *args)
 
     while (bson_iter_next(&bson_and_iter.iter)) {
         key = bson_iter_key(&bson_and_iter.iter);
-        if (!key)
+        if (!key) {
+            raise_invalid_bson("Invalid key.");
             goto error;
-
+        }
         py_key = PyString_FromString(key);
         if (!py_key)
             goto error;
