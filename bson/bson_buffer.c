@@ -32,12 +32,11 @@ bson_buffer_attach_doc(BSONBuffer *buffer, BSONDocument *doc)
 }
 
 static PyObject *
-BSONBuffer_IterNext(PyObject *self) {
+BSONBuffer_IterNext(BSONBuffer *buffer) {
     bson_off_t start;
     bson_off_t end;
     bson_bool_t eof = FALSE;
     BSONDocument *doc = NULL;
-    BSONBuffer *buffer = (BSONBuffer *)self;
     bson_reader_t *reader = buffer->reader;
 
     if (!reader) {
@@ -195,7 +194,7 @@ static PyTypeObject BSONBuffer_Type = {
     0,                         /* tp_richcompare */
     0,                         /* tp_weaklistoffset */
     PyObject_SelfIter,         /* tp_iter: __iter__() method */
-    BSONBuffer_IterNext,       /* tp_iternext: next() method */
+    (iternextfunc)BSONBuffer_IterNext, /* tp_iternext: next() method */
     0,                         /* tp_methods */
     0,                         /* tp_members */
     0,                         /* tp_getset */
