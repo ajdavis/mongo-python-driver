@@ -93,7 +93,7 @@ class TestBSONBuffer(unittest.TestCase):
         array = bytearray(bson_bytes)
         buf = BSONBuffer(array)
         self.assertTrue(isinstance(buf, BSONBuffer))
-        
+
         doc = next(buf)
         self.assertEqual([], doc.keys())
         self.assertEqual(0, len(doc))
@@ -101,7 +101,7 @@ class TestBSONBuffer(unittest.TestCase):
         self.assertRaises(InvalidBSON, next, buf)
 
         # Now the iterator is invalid.
-        self.assertRaises(StopIteration, next, buf)
+        self.assertRaises(InvalidBSON, next, buf)
 
 if __name__ == '__main__':
     unittest.main()
