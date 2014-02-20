@@ -40,7 +40,7 @@ typedef struct BSONDocument {
     /* This document's offset into array. */
     bson_off_t offset;
     /* This document's length. */
-    bson_size_t length;
+    bson_uint32_t length;
     /* How many times were we accessed before inflating? */
     unsigned char n_accesses;
     /* Neighbors in list of documents, all pointing to the same buffer. */
