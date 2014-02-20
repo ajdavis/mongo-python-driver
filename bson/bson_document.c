@@ -155,6 +155,10 @@ BSONDocument_Subscript(PyObject *self, PyObject *key)
             PyErr_SetObject(PyExc_KeyError, key);
         }
 
+        /*
+         * PyDict_GetItem returns borrowed reference.
+         */
+        Py_INCREF(ret);
         return ret;
     }
 
