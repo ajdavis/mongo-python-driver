@@ -28,6 +28,11 @@
 void
 bson_buffer_attach_doc(BSONBuffer *buffer, BSONDocument *doc)
 {
+    /*
+     * Dependents aren't reference-counted. We manually ensure that
+     * dealloc'ed docs are removed from dependents, and if the buffer
+     * is dealloc'ed it detaches all the docs from itself.
+     */
     DL_APPEND(buffer->dependents, doc);
 }
 
@@ -49,6 +54,7 @@ BSONBuffer_IterNext(BSONBuffer *buffer) {
         if (!InvalidBSON)
             goto error;
         PyErr_SetString(InvalidBSON, "Buffer contained invalid BSON.");
+        Py_DECREF(InvalidBSON);
         goto error;
     }
     if (!reader) {
@@ -88,6 +94,7 @@ BSONBuffer_IterNext(BSONBuffer *buffer) {
             if (!InvalidBSON)
                 goto error;
             PyErr_SetString(InvalidBSON, "Buffer contained invalid BSON.");
+            Py_DECREF(InvalidBSON);
             goto error;
         }
     }
@@ -121,8 +128,8 @@ BSONBuffer_Init(BSONBuffer *self, PyObject *args, PyObject *kwds)
      * TODO: Does this have to be a separate allocation from the BSONBuffer?
      */
     bson_reader_t *reader = NULL;
+    PyObject *array = NULL;
     bson_size_t buffer_size;
-    PyObject *array;
 
     if (!PyArg_ParseTuple(args, "O", &array))
         goto error;

@@ -51,6 +51,7 @@ bson_doc_inflate(BSONDocument *doc)
     if (IS_INFLATED(doc))
         return TRUE;
 
+    assert(!doc->keys);
     doc->keys = PyList_New(0);
     if (!doc->keys)
         goto error;
@@ -159,6 +160,7 @@ BSONDocument_Subscript(PyObject *self, PyObject *key)
         if (!ret) {
             /* PyDict_GetItem doesn't set exception. */
             PyErr_SetObject(PyExc_KeyError, key);
+            goto error;
         }
 
         /*

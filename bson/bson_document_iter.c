@@ -134,10 +134,15 @@ bson_iter_nextitem_inflated(bson_doc_iterobject *iter)
     if (!key)
         goto error;
 
+    Py_INCREF(key);
     value = PyDict_GetItem((PyObject *)doc, key);
-    if (!value)
+    if (!value) {
+        PyErr_SetString(PyExc_RuntimeError,
+                        "Internal error in bson_iter_nextitem_inflated.");
         goto error;
+    }
 
+    Py_INCREF(value);
     result = PyTuple_New(2);
     if (!result)
         goto error;
