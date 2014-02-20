@@ -89,6 +89,35 @@ bson_iter_py_value(bson_iter_t *iter, BSONBuffer *buffer)
             ret = (PyObject *)doc;
         }
         break;
+    case BSON_TYPE_ARRAY:
+        {
+            /*
+             * TODO: could make a new lazy type here.
+             */
+            bson_iter_t child_iter;
+            if (!bson_iter_recurse(iter, &child_iter)) {
+                /*
+                 * TODO: everything should be InvalidBSON.
+                 */
+                PyErr_SetString(PyExc_ValueError, "invalid array");
+                goto error;
+            }
+            ret = PyList_New(0);
+            if (!ret)
+                goto error;
+
+            while (bson_iter_next(&child_iter)) {
+                PyObject *element = bson_iter_py_value(&child_iter, buffer);
+                if (!element)
+                    goto error;
+
+                if (PyList_Append(ret, element) < 0) {
+                    Py_DECREF(element);
+                    goto error;
+                }
+            }
+        }
+        break;
     case BSON_TYPE_UTF8:
         {
            bson_uint32_t utf8_len;

@@ -62,10 +62,12 @@ class TestBSONDocument(unittest.TestCase):
         self.assertEqual([('a', 1)], list(doc.iteritems()))
 
     def test_types(self):
-        # TODO: int32
         bson_bytes = BSON.encode(SON([
             ('string', 'bar'),
-            ('long', 1),
+            ('int', 1),
+            ('long', 2 << 40),
+            ('double', 1.5),
+            ('array', [1, 'foo', 1.5]),
             ('document', {'k': 'v'})
         ]))
 
@@ -77,7 +79,10 @@ class TestBSONDocument(unittest.TestCase):
             return next(buf)
 
         self.assertEqual('bar', get_doc()['string'])
-        self.assertEqual(1, get_doc()['long'])
+        self.assertEqual(1, get_doc()['int'])
+        self.assertEqual(2 << 40, get_doc()['long'])
+        self.assertEqual(1.5, get_doc()['double'])
+        self.assertEqual([1, 'foo', 1.5], get_doc()['array'])
         self.assertEqual('v', get_doc()['document']['k'])
 
     def test_explicit_inflate(self):
