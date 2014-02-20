@@ -26,7 +26,8 @@
  */
 
 /*
- * current_pos starts at 0. When iteration completes, 'doc' is null.
+ * current_pos starts at 0.
+ * When iteration completes, 'doc' is null.
  *
  * TODO: PyDict's iterator has a reusable PyObject *result for speed,
  *       emulate that.
@@ -120,7 +121,6 @@ bson_iter_nextitem_inflated(bson_doc_iterobject *iter)
     doc = iter->doc;
     assert(doc->keys);
     size = PyList_Size(doc->keys);
-
     if (iter->current_pos >= size) {
         /*
          * Completed.
@@ -174,9 +174,6 @@ BSONDocIter_NextItem(bson_doc_iterobject *iter)
 
     doc = iter->doc;
     if (doc && IS_INFLATED(doc)) {
-        /*
-         * TODO: Check if doc was modified and raise.
-         */
         return bson_iter_nextitem_inflated(iter);
     } else if (doc) {
         return bson_iter_nextitem_uninflated(iter);
