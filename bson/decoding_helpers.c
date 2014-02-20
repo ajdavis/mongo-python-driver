@@ -54,7 +54,7 @@ error:
 /*
  * Return bytes (Python 3) or str (Python 2), or set exception and return NULL.
  */
-PyObject *
+static PyObject *
 binary_data_to_py_bytes(
         const bson_uint8_t *binary_data,
         bson_uint32_t binary_len)
@@ -69,7 +69,7 @@ binary_data_to_py_bytes(
 /*
  * Return a UUID object or set exception and return NULL.
  */
-PyObject *
+static PyObject *
 bson_data_to_uuid(const bson_uint8_t *binary_data)
 {
     PyObject *data = binary_data_to_py_bytes(binary_data, 16);
@@ -113,7 +113,7 @@ done:
 /*
  * Return a Python Binary object, or set exception and return NULL.
  */
-PyObject *
+static PyObject *
 bson_data_to_binary(
         const bson_uint8_t *binary_data,
         bson_uint32_t binary_len,
@@ -157,7 +157,7 @@ done:
 /*
  * Decode a BSON binary, or return NULL and set exception.
  */
-PyObject *
+static PyObject *
 bson_iter_to_binary(bson_iter_t *iter) {
     bson_subtype_t binary_subtype;
     bson_uint32_t binary_len;
