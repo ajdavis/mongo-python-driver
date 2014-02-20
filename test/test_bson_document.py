@@ -118,6 +118,14 @@ class TestBSONDocument(unittest.TestCase):
             [('foo', 'bar'), ('a', 1)],
             list(doc.iteritems()))
 
+        # Recreate doc.
+        buf = BSONBuffer(array)
+        doc = next(buf)
+        self.assertFalse(doc.inflated())
+        del doc['foo']
+        self.assertTrue(doc.inflated())
+        self.assertEqual({}, doc)
+
     def test_inflate_after_accesses(self):
         buf = BSONBuffer(bytearray(BSON.encode({'foo': 'bar'})))
         doc0 = next(buf)
@@ -139,6 +147,36 @@ class TestBSONDocument(unittest.TestCase):
         self.assertEqual(
             [('oof', 1), ('a', 2)],
             list(iteritems))
+
+    def test_iteritems_change_size(self):
+        array = bytearray(BSON.encode(SON([
+            ('a', 1),
+            ('b', 2),
+            ('c', 3),
+        ])))
+
+        def check_doc(doc):
+            iteritems = doc.iteritems()
+            self.assertEqual(('a', 1), next(iteritems))
+
+            # Change size.
+            doc['x'] = 4
+            self.assertEqual(('b', 2), next(iteritems))
+
+            # Remove next element.
+            del doc['c']
+            self.assertEqual(('x', 4), next(iteritems))
+            self.assertRaises(StopIteration, next, iteritems)
+
+        buf = BSONBuffer(array)
+        doc = next(buf)
+        check_doc(doc)
+
+        # Same if document is inflated before calling iteritems().
+        buf = BSONBuffer(array)
+        doc = next(buf)
+        doc.inflate()
+        check_doc(doc)
 
 if __name__ == '__main__':
     unittest.main()

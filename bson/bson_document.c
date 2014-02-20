@@ -202,19 +202,68 @@ error:
     return NULL;
 }
 
+/*
+ * Return index or -1.
+ */
+static Py_ssize_t
+list_find(PyObject *list, PyObject *item)
+{
+    Py_ssize_t size = PyList_Size(list);
+    Py_ssize_t i;
+
+    assert(list);
+    assert(item);
+
+    for (i = 0; i < size; ++i) {
+        PyObject *current = PyList_GetItem(list, i);
+        if (!current)
+            /* Huh? */
+            return -1;
+
+        /*
+         * TODO: Is this the best way to compare? Matches dict semantics?
+         */
+        if (PyObject_RichCompareBool(item, current, Py_EQ))
+            return i;
+    }
+
+    return -1;
+}
+
 static int
 BSONDocument_AssignSubscript(BSONDocument *doc, PyObject *v, PyObject *w)
 {
     if (!bson_doc_detach(doc))
         return -1;
 
-    /*
-     * Put this key last.
-     */
-    if (PyList_Append(doc->keys, v) < 0)
-        return -1;
+    if (w) {
+        /*
+         * Put this key last.
+         */
+        if (PyList_Append(doc->keys, v) < 0)
+            return -1;
 
-    return PyDict_SetItem((PyObject *)doc, v, w);
+        return PyDict_SetItem((PyObject *)doc, v, w);
+    } else {
+        /*
+         * w is NULL: del document['field'].
+         */
+        Py_ssize_t index = list_find(doc->keys, v);
+        if (index < 0) {
+            PyErr_SetObject(PyExc_KeyError, v);
+            return -1;
+        }
+
+        if (PyDict_DelItem((PyObject *)doc, v) < 0)
+            return -1;
+
+        /*
+         * Remove from list of keys. Failure is unexpected and very bad, since
+         * we've already modified the dict.
+         */
+        assert(index < PyList_Size(doc->keys));
+        return PyList_SetSlice(doc->keys, index, index + 1, NULL);
+    }
 }
 
 static PyObject *
