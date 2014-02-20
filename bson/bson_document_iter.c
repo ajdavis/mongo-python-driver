@@ -162,34 +162,6 @@ error:
 }
 
 /*
- * Return index or -1.
- */
-static Py_ssize_t
-list_find(PyObject *list, PyObject *item)
-{
-    Py_ssize_t size = PyList_Size(list);
-    Py_ssize_t i;
-
-    assert(list);
-    assert(item);
-
-    for (i = 0; i < size; ++i) {
-        PyObject *current = PyList_GetItem(list, i);
-        if (!current)
-            /* Huh? */
-            return -1;
-
-        /*
-         * TODO: Is this the best way to compare? Matches dict semantics?
-         */
-        if (PyObject_RichCompareBool(item, current, Py_EQ))
-            return i;
-    }
-
-    return -1;
-}
-
-/*
  * Get the next (key, value) from a BSONDocument's iteritems().
  * iter's type is BSONDocumentIterItem_Type.
  */
