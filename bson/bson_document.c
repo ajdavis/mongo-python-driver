@@ -60,7 +60,7 @@ bson_doc_inflate(BSONDocument *doc)
         goto error;
 
     while (bson_iter_next(&bson_and_iter.iter)) {
-        char *ckey = bson_iter_key(&bson_and_iter.iter);
+        const char *ckey = bson_iter_key(&bson_and_iter.iter);
         if (!ckey) {
             PyErr_SetString(PyExc_RuntimeError,
                             "Internal error in bson_doc_inflate.");
