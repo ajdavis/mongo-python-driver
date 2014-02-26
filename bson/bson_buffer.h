@@ -17,7 +17,7 @@
 #ifndef BSON_BUFFER_H
 #define BSON_BUFFER_H
 
-struct BSONDocument; // forward declaration.
+struct BSONDocument; /* Forward declaration. */
 
 typedef struct {
     PyObject_HEAD
