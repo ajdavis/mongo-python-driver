@@ -121,7 +121,7 @@ error:
     return NULL;
 }
 
-int
+static int
 BSONBuffer_Init(BSONBuffer *self, PyObject *args, PyObject *kwds)
 {
     /*
