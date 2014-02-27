@@ -2491,11 +2491,11 @@ init_cbson(void)
     if (PyModule_AddObject(m, "_C_API", c_api_object) < 0)
         goto error;
 
-    /* Add BSONDocument type */
+    /* Add PyBSONDocument type */
     if (init_bson_document(m) < 0)
         goto error;
 
-    /* Add BSONDocument iterators */
+    /* Add PyBSONDocument iterators */
     if (init_bson_document_iter(m) < 0 )
         goto error;
 

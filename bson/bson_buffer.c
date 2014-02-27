@@ -26,7 +26,7 @@
  * Add doc to list of dependents.
  */
 void
-bson_buffer_attach_doc(BSONBuffer *buffer, BSONDocument *doc)
+bson_buffer_attach_doc(PyBSONBuffer *buffer, PyBSONDocument *doc)
 {
     /*
      * Dependents aren't reference-counted. We manually ensure that
@@ -37,11 +37,11 @@ bson_buffer_attach_doc(BSONBuffer *buffer, BSONDocument *doc)
 }
 
 static PyObject *
-BSONBuffer_IterNext(BSONBuffer *buffer) {
+PyBSONBuffer_IterNext(PyBSONBuffer *buffer) {
     bson_off_t start;
     bson_off_t end;
     bson_bool_t eof = FALSE;
-    BSONDocument *doc = NULL;
+    PyBSONDocument *doc = NULL;
     bson_reader_t *reader = buffer->reader;
 
     if (!buffer->valid) {
@@ -100,7 +100,7 @@ BSONBuffer_IterNext(BSONBuffer *buffer) {
     }
 
     end = bson_reader_tell(reader);
-    doc = BSONDocument_New(buffer, start, end);
+    doc = PyBSONDocument_New(buffer, start, end);
     if (!doc)
         goto error;
 
@@ -122,7 +122,7 @@ error:
 }
 
 static int
-BSONBuffer_Init(BSONBuffer *self, PyObject *args, PyObject *kwds)
+PyBSONBuffer_Init(PyBSONBuffer *self, PyObject *args, PyObject *kwds)
 {
     /*
      * TODO: Does this have to be a separate allocation from the BSONBuffer?
@@ -165,9 +165,9 @@ error:
 }
 
 static void
-BSONBuffer_Dealloc(BSONBuffer* self)
+BSONBuffer_Dealloc(PyBSONBuffer* self)
 {
-    BSONDocument *doc;
+    PyBSONDocument *doc;
 
     /*
      * Order of destruction matters. Note that bson_doc_inflate() doesn't
@@ -184,11 +184,11 @@ BSONBuffer_Dealloc(BSONBuffer* self)
     self->ob_type->tp_free((PyObject*)self);
 }
 
-static PyTypeObject BSONBuffer_Type = {
+static PyTypeObject PyBSONBuffer_Type = {
     PyObject_HEAD_INIT(NULL)
     0,                         /*ob_size*/
     "bson.BSONBuffer",         /*tp_name*/
-    sizeof(BSONBuffer),        /*tp_basicsize*/
+    sizeof(PyBSONBuffer),        /*tp_basicsize*/
     0,                         /*tp_itemsize*/
     (destructor)BSONBuffer_Dealloc, /*tp_dealloc*/
     0,                         /*tp_print*/
@@ -208,13 +208,13 @@ static PyTypeObject BSONBuffer_Type = {
     /* Py_TPFLAGS_HAVE_ITER tells Python to
        use tp_iter and tp_iternext fields. */
     Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_ITER,
-    "BSONDocument lazy-loading iterator.", /* tp_doc */
+    "PyBSONDocument lazy-loading iterator.", /* tp_doc */
     0,                         /* tp_traverse */
     0,                         /* tp_clear */
     0,                         /* tp_richcompare */
     0,                         /* tp_weaklistoffset */
     PyObject_SelfIter,         /* tp_iter: __iter__() method */
-    (iternextfunc)BSONBuffer_IterNext, /* tp_iternext: next() method */
+    (iternextfunc)PyBSONBuffer_IterNext, /* tp_iternext: next() method */
     0,                         /* tp_methods */
     0,                         /* tp_members */
     0,                         /* tp_getset */
@@ -223,7 +223,7 @@ static PyTypeObject BSONBuffer_Type = {
     0,                         /* tp_descr_get */
     0,                         /* tp_descr_set */
     0,                         /* tp_dictoffset */
-    (initproc)BSONBuffer_Init, /* tp_init */
+    (initproc)PyBSONBuffer_Init, /* tp_init */
     0,                         /* tp_alloc */
     0,                         /* tp_new */
 };
@@ -231,14 +231,14 @@ static PyTypeObject BSONBuffer_Type = {
 int
 init_bson_buffer(PyObject* module)
 {
-    BSONBuffer_Type.tp_new = PyType_GenericNew;
-    if (PyType_Ready(&BSONBuffer_Type) < 0)
+    PyBSONBuffer_Type.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&PyBSONBuffer_Type) < 0)
         return -1;
 
-    Py_INCREF(&BSONBuffer_Type);
+    Py_INCREF(&PyBSONBuffer_Type);
     if (PyModule_AddObject(module,
                            "BSONBuffer",
-                           (PyObject *)&BSONBuffer_Type) < 0)
+                           (PyObject *)&PyBSONBuffer_Type) < 0)
         return -1;
 
     return 0;

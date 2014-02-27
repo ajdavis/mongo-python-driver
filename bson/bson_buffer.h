@@ -17,20 +17,20 @@
 #ifndef BSON_BUFFER_H
 #define BSON_BUFFER_H
 
-struct BSONDocument; /* Forward declaration. */
+struct PyBSONDocument; /* Forward declaration. */
 
 typedef struct {
     PyObject_HEAD
     /* Doubly-linked list of active BSONDocuments referring to this buffer. */
-    struct BSONDocument *dependents;
+    struct PyBSONDocument *dependents;
     /* A bytearray. */
     PyObject *array;
     bson_reader_t *reader;
     int valid;
-} BSONBuffer;
+} PyBSONBuffer;
 
 void
-bson_buffer_attach_doc(BSONBuffer *buffer, struct BSONDocument *doc);
+bson_buffer_attach_doc(PyBSONBuffer *buffer, struct PyBSONDocument *doc);
 
 /*
  * Add BSONBuffer and related functions to module.

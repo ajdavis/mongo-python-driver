@@ -24,13 +24,13 @@
  */
 
 //PyObject *
-//bson_doc_iterkeys(BSONDocument *doc);
+//PyBSONDocument_IterKeys(PyBSONDocument *doc);
 //
 //PyObject *
-//bson_doc_itervalues(BSONDocument *doc);
+//PyBSONDocument_IterValues(PyBSONDocument *doc);
 
 PyObject *
-BSONDocument_IterItems(BSONDocument *doc);
+PyBSONDocument_IterItems(PyBSONDocument *doc);
 
 int
 init_bson_document_iter(PyObject *module);

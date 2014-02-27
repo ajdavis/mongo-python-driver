@@ -22,7 +22,7 @@
 #include "decoding_helpers.h"
 
 /*
- * BSONDocument iterator types.
+ * PyBSONDocument iterator types.
  */
 
 /*
@@ -35,14 +35,14 @@
 typedef struct {
     PyObject_HEAD
     /* Set to NULL when iterator is exhausted */
-    BSONDocument *doc;
+    PyBSONDocument *doc;
     /* Index into doc->keys. */
     Py_ssize_t current_pos;
     bson_and_iter_t bson_and_iter;
 } bson_doc_iterobject;
 
 static void
-BSONDocIter_Dealloc(bson_doc_iterobject *iter)
+bson_doc_iter_dealloc(bson_doc_iterobject *iter)
 {
     assert(iter);
 
@@ -51,7 +51,7 @@ BSONDocIter_Dealloc(bson_doc_iterobject *iter)
 }
 
 /*
- * Get the next item from an uninflated BSONDocument's iteritems(),
+ * Get the next item from an uninflated PyBSONDocument's iteritems(),
  * or set exception and return NULL.
  */
 static PyObject *
@@ -61,7 +61,7 @@ bson_iter_nextitem_uninflated(bson_doc_iterobject *iter)
     PyObject *value = NULL;
     PyObject *result = NULL;
     bson_and_iter_t *bson_and_iter;
-    BSONDocument *doc = iter->doc;
+    PyBSONDocument *doc = iter->doc;
     bson_and_iter = &iter->bson_and_iter;
 
     assert(iter);
@@ -104,7 +104,7 @@ error:
 }
 
 /*
- * Get the next item from an inflated BSONDocument's iteritems(),
+ * Get the next item from an inflated PyBSONDocument's iteritems(),
  * or set exception and return NULL.
  */
 static PyObject *
@@ -113,7 +113,7 @@ bson_iter_nextitem_inflated(bson_doc_iterobject *iter)
     PyObject *key = NULL;
     PyObject *value = NULL;
     PyObject *result = NULL;
-    BSONDocument *doc;
+    PyBSONDocument *doc;
     Py_ssize_t size;
 
     assert(iter);
@@ -162,13 +162,13 @@ error:
 }
 
 /*
- * Get the next (key, value) from a BSONDocument's iteritems().
+ * Get the next (key, value) from a PyBSONDocument's iteritems().
  * iter's type is BSONDocumentIterItem_Type.
  */
 static PyObject *
-BSONDocIter_NextItem(bson_doc_iterobject *iter)
+PyBSONDocIter_NextItem(bson_doc_iterobject *iter)
 {
-    BSONDocument *doc;
+    PyBSONDocument *doc;
 
     assert(iter);
 
@@ -186,12 +186,12 @@ BSONDocIter_NextItem(bson_doc_iterobject *iter)
     }
 }
 
-PyTypeObject BSONDocumentIterItem_Type = {
+PyTypeObject PyBSONDocumentIterItem_Type = {
     PyVarObject_HEAD_INIT(&PyType_Type, 0)
-    "BSONDocument iterator",                    /* tp_name */
+    "PyBSONDocument iterator",                  /* tp_name */
     sizeof(bson_doc_iterobject),                /* tp_basicsize */
     0,                                          /* tp_itemsize */
-    (destructor)BSONDocIter_Dealloc,            /* tp_dealloc */
+    (destructor)bson_doc_iter_dealloc,          /* tp_dealloc */
     0,                                          /* tp_print */
     0,                                          /* tp_getattr */
     0,                                          /* tp_setattr */
@@ -213,13 +213,13 @@ PyTypeObject BSONDocumentIterItem_Type = {
     0,                                          /* tp_richcompare */
     0,                                          /* tp_weaklistoffset */
     PyObject_SelfIter,                          /* tp_iter */
-    (iternextfunc)BSONDocIter_NextItem,         /* tp_iternext */
+    (iternextfunc)PyBSONDocIter_NextItem,       /* tp_iternext */
     0,                                          /* tp_methods */
     0,                                          /* tp_members */
 };
 
 static bson_doc_iterobject *
-bson_doc_iter_new(BSONDocument *doc, PyTypeObject *itertype)
+bson_doc_iter_new(PyBSONDocument *doc, PyTypeObject *itertype)
 {
     bson_doc_iterobject *iter = PyObject_New(bson_doc_iterobject, itertype);
     if (!iter)
@@ -248,13 +248,13 @@ error:
  */
 
 PyObject *
-BSONDocument_IterItems(BSONDocument *doc)
+PyBSONDocument_IterItems(PyBSONDocument *doc)
 {
-    return (PyObject *)bson_doc_iter_new(doc, &BSONDocumentIterItem_Type);
+    return (PyObject *)bson_doc_iter_new(doc, &PyBSONDocumentIterItem_Type);
 }
 
 int
 init_bson_document_iter(PyObject *module)
 {
-    return PyType_Ready(&BSONDocumentIterItem_Type);
+    return PyType_Ready(&PyBSONDocumentIterItem_Type);
 }

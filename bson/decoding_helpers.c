@@ -25,7 +25,7 @@
  * Initialize a bson_t and bson_iter_t, or set exception and return FALSE.
  */
 int
-bson_doc_iter_init(BSONDocument *doc, bson_and_iter_t *bson_and_iter)
+bson_doc_iter_init(PyBSONDocument *doc, bson_and_iter_t *bson_and_iter)
 {
     if (!doc->buffer)
         goto error;
@@ -217,7 +217,7 @@ done:
  * Decode the value at the current position, or set exception and return NULL.
  */
 PyObject *
-bson_iter_py_value(bson_iter_t *iter, BSONBuffer *buffer)
+bson_iter_py_value(bson_iter_t *iter, PyBSONBuffer *buffer)
 {
     PyObject *ret = NULL;
     /*
@@ -231,7 +231,7 @@ bson_iter_py_value(bson_iter_t *iter, BSONBuffer *buffer)
         break;
     case BSON_TYPE_DOCUMENT:
         {
-            BSONDocument *doc;
+            PyBSONDocument *doc;
             bson_off_t start;
             bson_uint8_t *buffer_ptr =
                     (bson_uint8_t *)PyByteArray_AsString(buffer->array);
@@ -243,7 +243,7 @@ bson_iter_py_value(bson_iter_t *iter, BSONBuffer *buffer)
             }
 
             start = (bson_off_t)(child_iter.raw - buffer_ptr);
-            doc = BSONDocument_New(
+            doc = PyBSONDocument_New(
                     buffer,
                     start,
                     (bson_off_t)(start + child_iter.len));

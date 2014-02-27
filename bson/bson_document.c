@@ -29,7 +29,7 @@
  * Detach doc from buffer.
  */
 void
-bson_doc_detach_buffer(BSONDocument *doc)
+bson_doc_detach_buffer(PyBSONDocument *doc)
 {
     if (doc->buffer) {
         DL_DELETE(doc->buffer->dependents, doc);
@@ -44,7 +44,7 @@ bson_doc_detach_buffer(BSONDocument *doc)
  * Does not release the buffer.
  */
 int
-bson_doc_inflate(BSONDocument *doc)
+bson_doc_inflate(PyBSONDocument *doc)
 {
     PyObject *key = NULL;
     PyObject *value = NULL;
@@ -105,7 +105,7 @@ error:
  * Call inflate() and release the buffer, or set exception and return FALSE.
  */
 int
-bson_doc_detach(BSONDocument *doc)
+bson_doc_detach(PyBSONDocument *doc)
 {
     if (!bson_doc_inflate(doc))
         return FALSE;
@@ -116,7 +116,7 @@ bson_doc_detach(BSONDocument *doc)
 }
 
 static Py_ssize_t
-BSONDocument_Size(BSONDocument *doc)
+PyBSONDocument_Size(PyBSONDocument *doc)
 {
     Py_ssize_t ret = 0;
     bson_and_iter_t bson_and_iter;
@@ -142,9 +142,9 @@ error:
 }
 
 static PyObject *
-BSONDocument_Subscript(PyObject *self, PyObject *key)
+PyBSONDocument_Subscript(PyObject *self, PyObject *key)
 {
-    BSONDocument *doc = (BSONDocument *)self;
+    PyBSONDocument *doc = (PyBSONDocument *)self;
     PyObject *ret = NULL;
     bson_and_iter_t bson_and_iter;
     const char *cstring_key = NULL;
@@ -231,7 +231,7 @@ list_find(PyObject *list, PyObject *item)
 }
 
 static int
-BSONDocument_AssignSubscript(BSONDocument *doc, PyObject *v, PyObject *w)
+PyBSONDocument_AssignSubscript(PyBSONDocument *doc, PyObject *v, PyObject *w)
 {
     if (!bson_doc_detach(doc))
         return -1;
@@ -267,9 +267,9 @@ BSONDocument_AssignSubscript(BSONDocument *doc, PyObject *v, PyObject *w)
 }
 
 static PyObject *
-BSONDocument_Keys(PyObject *self, PyObject *args)
+PyBSONDocument_Keys(PyObject *self, PyObject *args)
 {
-    BSONDocument *doc = (BSONDocument *)self;
+    PyBSONDocument *doc = (PyBSONDocument *)self;
     PyObject *py_key = NULL;
     bson_and_iter_t bson_and_iter;
     const char *key;
@@ -321,12 +321,12 @@ error:
  *  - If the method would modify, ensure inflated and call dict method
  *  - Else increment n_accesses and call libbson method
  *
- * BSONDocument must also be iterable, with the same shortcut methods as
+ * PyBSONDocument must also be iterable, with the same shortcut methods as
  * BSONBuffer.
  */
 
 static PyObject *
-BSONDocument_Inflate(BSONDocument *doc)
+PyBSONDocument_Inflate(PyBSONDocument *doc)
 {
     if (!bson_doc_inflate(doc))
         return NULL;
@@ -335,7 +335,7 @@ BSONDocument_Inflate(BSONDocument *doc)
 }
 
 static PyObject *
-BSONDocument_Inflated(BSONDocument *doc)
+PyBSONDocument_Inflated(PyBSONDocument *doc)
 {
     if (IS_INFLATED(doc)) {
         Py_RETURN_TRUE;
@@ -361,7 +361,7 @@ static PyMethodDef BSONDocument_methods[] = {
          */
 //    {"__contains__",    (PyCFunction)bson_doc_contains,     METH_O | METH_COEXIST,
 //     contains__doc__},
-    {"__getitem__",     (PyCFunction)BSONDocument_Subscript, METH_O | METH_COEXIST,
+    {"__getitem__",     (PyCFunction)PyBSONDocument_Subscript, METH_O | METH_COEXIST,
      getitem__doc__},
 //    {"__sizeof__",      (PyCFunction)bson_doc_sizeof,       METH_NOARGS,
 //     sizeof__doc__},
@@ -375,7 +375,7 @@ static PyMethodDef BSONDocument_methods[] = {
 //     pop__doc__},
 //    {"popitem",         (PyCFunction)bson_doc_popitem,      METH_NOARGS,
 //     popitem__doc__},
-    {"keys",            (PyCFunction)BSONDocument_Keys, METH_NOARGS,
+    {"keys",            (PyCFunction)PyBSONDocument_Keys, METH_NOARGS,
      keys__doc__},
 //    {"items",           (PyCFunction)bson_doc_items,        METH_NOARGS,
 //     items__doc__},
@@ -399,40 +399,40 @@ static PyMethodDef BSONDocument_methods[] = {
 //     iterkeys__doc__},
 //    {"itervalues",      (PyCFunction)bson_doc_itervalues,   METH_NOARGS,
 //     itervalues__doc__},
-    {"iteritems",       (PyCFunction)BSONDocument_IterItems, METH_NOARGS,
+    {"iteritems",       (PyCFunction)PyBSONDocument_IterItems, METH_NOARGS,
      iteritems__doc__},
      /*
-      * BSONDocument-specific methods
+      * PyBSONDocument-specific methods
       */
-    {"inflate",         (PyCFunction)BSONDocument_Inflate, METH_NOARGS,
+    {"inflate",         (PyCFunction)PyBSONDocument_Inflate, METH_NOARGS,
      inflate__doc__},
-    {"inflated",        (PyCFunction)BSONDocument_Inflated, METH_NOARGS,
+    {"inflated",        (PyCFunction)PyBSONDocument_Inflated, METH_NOARGS,
      inflated__doc__},
     {NULL,	NULL},
 };
 
 static PyMappingMethods bson_doc_as_mapping = {
-    (lenfunc)BSONDocument_Size,          /* mp_length */
-    (binaryfunc)BSONDocument_Subscript,  /* mp_subscript */
-    (objobjargproc)BSONDocument_AssignSubscript, /* mp_ass_subscript */
+    (lenfunc)PyBSONDocument_Size,          /* mp_length */
+    (binaryfunc)PyBSONDocument_Subscript,  /* mp_subscript */
+    (objobjargproc)PyBSONDocument_AssignSubscript, /* mp_ass_subscript */
 };
 
 static void
-BSONDocument_Dealloc(BSONDocument* doc)
+bson_doc_dealloc(PyBSONDocument* doc)
 {
     bson_doc_detach_buffer(doc);
     PyDict_Type.tp_dealloc((PyObject *)doc);
 }
 
 static int
-BSONDocument_init(BSONDocument *doc, PyObject *args, PyObject *kwds)
+bson_doc_init(PyBSONDocument *doc, PyObject *args, PyObject *kwds)
 {
 	/*
 	 * TODO: accept a buffer, offset, and length.
 	 */
     if ((args && PyObject_Length(args) > 0)
     		|| (kwds && PyObject_Length(kwds) > 0)) {
-    	PyErr_SetString(PyExc_TypeError, "BSONDocument takes no arguments");
+    	PyErr_SetString(PyExc_TypeError, "PyBSONDocument takes no arguments");
     	return -1;
     }
     if (PyDict_Type.tp_init((PyObject *)doc, args, kwds) < 0) {
@@ -445,13 +445,13 @@ BSONDocument_init(BSONDocument *doc, PyObject *args, PyObject *kwds)
     return 0;
 }
 
-static PyTypeObject BSONDocument_Type = {
+static PyTypeObject PyBSONDocument_Type = {
     PyObject_HEAD_INIT(NULL)
     0,                       /* ob_size */
-    "bson.BSONDocument",     /* tp_name */
-    sizeof(BSONDocument),    /* tp_basicsize */
+    "bson.PyBSONDocument",     /* tp_name */
+    sizeof(PyBSONDocument),    /* tp_basicsize */
     0,                       /* tp_itemsize */
-    (destructor)BSONDocument_Dealloc, /* tp_dealloc */
+    (destructor)bson_doc_dealloc, /* tp_dealloc */
     0,                       /* tp_print */
     0,                       /* tp_getattr */
     0,                       /* tp_setattr */
@@ -484,7 +484,7 @@ static PyTypeObject BSONDocument_Type = {
     0,                       /* tp_descr_get */
     0,                       /* tp_descr_set */
     0,                       /* tp_dictoffset */
-    (initproc)BSONDocument_init, /* tp_init */
+    (initproc)bson_doc_init, /* tp_init */
     0,                       /* tp_alloc */
     0,                       /* tp_new */
 };
@@ -492,10 +492,10 @@ static PyTypeObject BSONDocument_Type = {
 /*
  * TODO: start and length might be cleaner than start and end.
  */
-BSONDocument *
-BSONDocument_New(BSONBuffer *buffer, bson_off_t start, bson_off_t end)
+PyBSONDocument *
+PyBSONDocument_New(PyBSONBuffer *buffer, bson_off_t start, bson_off_t end)
 {
-    BSONDocument *doc;
+    PyBSONDocument *doc;
     PyObject *init_args = NULL;
 
     /*
@@ -508,10 +508,10 @@ BSONDocument_New(BSONBuffer *buffer, bson_off_t start, bson_off_t end)
     /*
      * PyType_GenericNew seems unable to create a dict or a subclass of it.
      * TODO: Why? I'm confused about the relationship of this and
-     *       BSONDocument_init.
+     *       PyBSONDocument_init.
      */
-    doc = (BSONDocument*)PyObject_Call(
-        (PyObject *)&BSONDocument_Type, init_args, NULL);
+    doc = (PyBSONDocument*)PyObject_Call(
+        (PyObject *)&PyBSONDocument_Type, init_args, NULL);
 
     Py_DECREF(init_args);
 
@@ -529,8 +529,8 @@ BSONDocument_New(BSONBuffer *buffer, bson_off_t start, bson_off_t end)
 int
 init_bson_document(PyObject* module)
 {
-    BSONDocument_Type.tp_base = &PyDict_Type;
-    if (PyType_Ready(&BSONDocument_Type) < 0)
+    PyBSONDocument_Type.tp_base = &PyDict_Type;
+    if (PyType_Ready(&PyBSONDocument_Type) < 0)
         return -1;
 
     return 0;

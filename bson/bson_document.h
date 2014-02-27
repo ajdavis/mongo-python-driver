@@ -32,11 +32,11 @@
  * they can be notified when the buffer is being deallocated. Their position
  * in the list is unrelated to their offset in the buffer.
  */
-typedef struct BSONDocument {
+typedef struct PyBSONDocument {
     /* Superclass. */
     PyDictObject dict;
     /* Buffer from which we're reading. Not reference-counted. */
-    BSONBuffer *buffer;
+    PyBSONBuffer *buffer;
     /* This document's offset into array. */
     bson_off_t offset;
     /* This document's length. */
@@ -44,32 +44,32 @@ typedef struct BSONDocument {
     /* How many times were we accessed before inflating? */
     unsigned char n_accesses;
     /* Neighbors in list of documents, all pointing to the same buffer. */
-    struct BSONDocument *prev, *next;
+    struct PyBSONDocument *prev, *next;
     /* Preserve key order after we inflate. */
     PyObject *keys;
-} BSONDocument;
+} PyBSONDocument;
 
 /*
  * Replace linear access with a hash table.
  * Does not release the buffer. Returns TRUE on success.
  */
 int
-bson_doc_inflate(BSONDocument *doc);
+bson_doc_inflate(PyBSONDocument *doc);
 
 /*
  * Call inflate() and release the buffer. Returns TRUE on success.
  */
 int
-bson_doc_detach(BSONDocument *doc);
+bson_doc_detach(PyBSONDocument *doc);
 
 /*
- * Create a BSONDocument.
+ * Create a PyBSONDocument.
  */
-BSONDocument *
-BSONDocument_New(BSONBuffer *buffer, bson_off_t start, bson_off_t end);
+PyBSONDocument *
+PyBSONDocument_New(PyBSONBuffer *buffer, bson_off_t start, bson_off_t end);
 
 /*
- * Add BSONDocument and related functions to module.
+ * Add PyBSONDocument and related functions to module.
  */
 int
 init_bson_document(PyObject* module);
