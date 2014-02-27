@@ -21,9 +21,9 @@
  */
 
 #include "Python.h"
-#include "bson.h"  // MongoDB, Inc.'s libbson project
-#include "datetime.h"
+#include "bson.h"
 
+#include "datetime.h"
 #include "buffer.h"
 #include "time64.h"
 #include "encoding_helpers.h"

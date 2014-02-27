@@ -17,7 +17,7 @@
 #ifndef DECODING_HELPERS_H
 #define DECODING_HELPERS_H
 
-#include "bson.h"  // MongoDB, Inc.'s libbson project
+#include "bson.h"
 
 #include "bson_buffer.h"
 #include "bson_document.h"

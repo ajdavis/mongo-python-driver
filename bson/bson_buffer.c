@@ -16,9 +16,9 @@
 
 #include "Python.h"
 
-#include "bson.h"  /* MongoDB, Inc.'s libbson project. */
-#include "utlist.h"
+#include "bson.h"
 
+#include "utlist.h"
 #include "bson_document.h"
 #include "bson_buffer.h"
 
