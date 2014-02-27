@@ -332,20 +332,7 @@ def _elements_to_dict(data, as_class, tz_aware, uuid_subtype, compile_re):
         result[key] = value
     return result
 
-def _bson_to_dict(data, as_class, tz_aware, uuid_subtype, compile_re):
-    obj_size = struct.unpack("<i", data[:4])[0]
-    length = len(data)
-    if length < obj_size:
-        raise InvalidBSON("objsize too large")
-    if obj_size != length or data[obj_size - 1:obj_size] != ZERO:
-        raise InvalidBSON("bad eoo")
-    elements = data[4:obj_size - 1]
-    dct = _elements_to_dict(
-        elements, as_class, tz_aware, uuid_subtype, compile_re)
-
-    return dct, data[obj_size:]
-if _use_c:
-    _bson_to_dict = _cbson._bson_to_dict
+_bson_to_dict = _cbson._bson_to_dict
 
 
 def _element_to_bson(key, value, check_keys, uuid_subtype):
@@ -493,53 +480,7 @@ if _use_c:
     _dict_to_bson = _cbson._dict_to_bson
 
 
-
-def decode_all(data, as_class=dict,
-               tz_aware=True, uuid_subtype=OLD_UUID_SUBTYPE, compile_re=True):
-    """Decode BSON data to multiple documents.
-
-    `data` must be a string of concatenated, valid, BSON-encoded
-    documents.
-
-    :Parameters:
-      - `data`: BSON data
-      - `as_class` (optional): the class to use for the resulting
-        documents
-      - `tz_aware` (optional): if ``True``, return timezone-aware
-        :class:`~datetime.datetime` instances
-      - `compile_re` (optional): if ``False``, don't attempt to compile
-        BSON regular expressions into Python regular expressions. Return
-        instances of :class:`~bson.regex.Regex` instead. Can avoid
-        :exc:`~bson.errors.InvalidBSON` errors when receiving
-        Python-incompatible regular expressions, for example from ``currentOp``
-
-    .. versionchanged:: 2.7
-       Added `compile_re` option.
-    .. versionadded:: 1.9
-    """
-    docs = []
-    position = 0
-    end = len(data) - 1
-    try:
-        while position < end:
-            obj_size = struct.unpack("<i", data[position:position + 4])[0]
-            if len(data) - position < obj_size:
-                raise InvalidBSON("objsize too large")
-            if data[position + obj_size - 1:position + obj_size] != ZERO:
-                raise InvalidBSON("bad eoo")
-            elements = data[position + 4:position + obj_size - 1]
-            position += obj_size
-            docs.append(_elements_to_dict(elements, as_class,
-                                          tz_aware, uuid_subtype, compile_re))
-        return docs
-    except InvalidBSON:
-        raise
-    except Exception:
-        # Change exception type to InvalidBSON but preserve traceback.
-        exc_type, exc_value, exc_tb = sys.exc_info()
-        raise InvalidBSON, str(exc_value), exc_tb
-if _use_c:
-    decode_all = _cbson.decode_all
+decode_all = _cbson.decode_all
 
 
 def is_valid(bson):

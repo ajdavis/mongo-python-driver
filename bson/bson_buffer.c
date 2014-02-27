@@ -36,7 +36,7 @@ bson_buffer_attach_doc(PyBSONBuffer *buffer, PyBSONDocument *doc)
     DL_APPEND(buffer->dependents, doc);
 }
 
-static PyObject *
+PyObject *
 PyBSONBuffer_IterNext(PyBSONBuffer *buffer) {
     bson_off_t start;
     bson_off_t end;
@@ -121,21 +121,29 @@ error:
     return NULL;
 }
 
+/*
+ * Common functionality: Initialize a PyBSONBuffer,
+ * or set exception and return false.
+ */
 static int
-PyBSONBuffer_Init(PyBSONBuffer *self, PyObject *args, PyObject *kwds)
+bson_buffer_init(PyBSONBuffer *buffer, PyObject *data)
 {
     /*
      * TODO: Does this have to be a separate allocation from the BSONBuffer?
      */
     bson_reader_t *reader = NULL;
-    PyObject *array = NULL;
     bson_size_t buffer_size;
+    PyObject *array = NULL;
 
-    if (!PyArg_ParseTuple(args, "O", &array))
-        goto error;
-
-    if (!PyByteArray_Check(array)) {
-        PyErr_SetString(PyExc_TypeError, "array must be a bytearray.");
+    if (PyByteArray_Check(data)) {
+        array = data;
+        Py_INCREF(array);
+    } else if (PyBytes_Check(data)) {
+        array = PyByteArray_FromObject(data);
+        if (!array)
+            goto error;
+    } else {
+        PyErr_SetString(PyExc_TypeError, "data must be a bytearray or bytes.");
         goto error;
     }
 
@@ -147,20 +155,38 @@ PyBSONBuffer_Init(PyBSONBuffer *self, PyObject *args, PyObject *kwds)
     if (!reader)
         goto error;
 
-    Py_INCREF(array);
-    self->array = array;
-    self->reader = reader;
-    self->dependents = NULL;
-    self->valid = 1;
-    return 0;
+    buffer->array = array;
+    buffer->reader = reader;
+    buffer->dependents = NULL;
+    buffer->valid = TRUE;
+    return TRUE;
 
 error:
+    buffer->array = NULL;
     Py_XDECREF(array);
-    self->array = NULL;
     if (reader)
         bson_reader_destroy(reader);
 
-    self->reader = NULL;
+    buffer->reader = NULL;
+    buffer->dependents = NULL;
+    buffer->valid = FALSE;
+    return FALSE;
+}
+
+static int
+bson_buffer_initproc(PyBSONBuffer *self, PyObject *args, PyObject *kwds)
+{
+    PyObject *data = NULL;
+    if (!PyArg_ParseTuple(args, "O", &data))
+        goto error;
+
+    if (!bson_buffer_init(self, data))
+        goto error;
+
+    return 0;
+
+error:
+    Py_XDECREF(data);
     return -1;
 }
 
@@ -223,10 +249,27 @@ static PyTypeObject PyBSONBuffer_Type = {
     0,                         /* tp_descr_get */
     0,                         /* tp_descr_set */
     0,                         /* tp_dictoffset */
-    (initproc)PyBSONBuffer_Init, /* tp_init */
+    (initproc)bson_buffer_initproc, /* tp_init */
     0,                         /* tp_alloc */
     0,                         /* tp_new */
 };
+
+PyBSONBuffer *
+bson_buffer_new(PyObject *data)
+{
+    PyBSONBuffer *buffer = PyObject_New(PyBSONBuffer, &PyBSONBuffer_Type);
+    if (!buffer)
+        goto error;
+
+    if (!bson_buffer_init(buffer, data))
+        goto error;
+
+    return buffer;
+
+error:
+    Py_XDECREF(buffer);
+    return NULL;
+}
 
 int
 init_bson_buffer(PyObject* module)

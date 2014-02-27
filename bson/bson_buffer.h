@@ -32,6 +32,17 @@ typedef struct {
 void
 bson_buffer_attach_doc(PyBSONBuffer *buffer, struct PyBSONDocument *doc);
 
+PyObject *
+PyBSONBuffer_IterNext(PyBSONBuffer *buffer);
+
+/*
+ * Create a new PyBSONBuffer, or set exception and return NULL.
+ * 'data' is a bytearray or bytes.
+ * For C users.
+ */
+PyBSONBuffer *
+bson_buffer_new(PyObject *data);
+
 /*
  * Add BSONBuffer and related functions to module.
  */

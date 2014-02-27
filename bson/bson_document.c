@@ -518,11 +518,14 @@ PyBSONDocument_New(PyBSONBuffer *buffer, bson_off_t start, bson_off_t end)
     if (!doc)
         return NULL;
 
-    /* Not reference-counted. */
+    /* Buffer is not reference-counted. */
     doc->buffer = buffer;
-    doc->offset = start;
-    doc->length = end - start;
     doc->keys = NULL;
+    doc->offset = start;
+    /*
+     * TODO: check for overflow.
+     */
+    doc->length = (bson_uint32_t)(end - start);
     return doc;
 }
 

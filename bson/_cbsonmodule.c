@@ -2193,112 +2193,60 @@ static PyObject* elements_to_dict(PyObject* self, const char* string,
 }
 
 static PyObject* _cbson_bson_to_dict(PyObject* self, PyObject* args) {
-    int size;
-    Py_ssize_t total_size;
-    const char* string;
-    PyObject* bson;
-    PyObject* as_class;
-    unsigned char tz_aware;
-    unsigned char uuid_subtype;
-    unsigned char compile_re;
+    PyObject * bson = NULL;
+    PyBSONBuffer *buffer = NULL;
+    PyObject *doc = NULL;
+    PyObject *remainder = NULL;
 
-    PyObject* dict;
-    PyObject* remainder;
-    PyObject* result;
+    /*
+     * TODO: use these.
+     */
+    PyObject* as_class = (PyObject*)&PyDict_Type;
+    unsigned char tz_aware = 1;
+    unsigned char uuid_subtype = 3;
+    unsigned char compile_re = 1;
 
     if (!PyArg_ParseTuple(
-            args, "OObbb", &bson, &as_class, &tz_aware, &uuid_subtype, &compile_re)) {
-        return NULL;
+            args, "O|Obbb",
+            &bson, &as_class, &tz_aware, &uuid_subtype, &compile_re)) {
+        goto error;
     }
 
+    buffer = bson_buffer_new(bson);
+    if (!buffer)
+        goto error;
+
+    doc = PyBSONBuffer_IterNext(buffer);
+    if (!doc)
+        goto error;
+
+    /*
+     * TODO: HACK! temporarily make old bson_to_dict work.
+     */
 #if PY_MAJOR_VERSION >= 3
-    if (!PyBytes_Check(bson)) {
-        PyErr_SetString(PyExc_TypeError, "argument to _bson_to_dict must be a bytes object");
+    remainder = PyBytes_FromString("");
 #else
-    if (!PyString_Check(bson)) {
-        PyErr_SetString(PyExc_TypeError, "argument to _bson_to_dict must be a string");
+    remainder = PyString_FromString("");
 #endif
-        return NULL;
-    }
-#if PY_MAJOR_VERSION >= 3
-    total_size = PyBytes_Size(bson);
-#else
-    total_size = PyString_Size(bson);
-#endif
-    if (total_size < BSON_MIN_SIZE) {
-        PyObject* InvalidBSON = _error("InvalidBSON");
-        if (InvalidBSON) {
-            PyErr_SetString(InvalidBSON,
-                            "not enough data for a BSON document");
-            Py_DECREF(InvalidBSON);
-        }
-        return NULL;
-    }
+    if (!remainder)
+        goto error;
 
-#if PY_MAJOR_VERSION >= 3
-    string = PyBytes_AsString(bson);
-#else
-    string = PyString_AsString(bson);
-#endif
-    if (!string) {
-        return NULL;
-    }
+    return Py_BuildValue("NN", doc, remainder);
 
-    memcpy(&size, string, 4);
-    if (size < BSON_MIN_SIZE) {
-        PyObject* InvalidBSON = _error("InvalidBSON");
-        if (InvalidBSON) {
-            PyErr_SetString(InvalidBSON, "invalid message size");
-            Py_DECREF(InvalidBSON);
-        }
-        return NULL;
-    }
-
-    if (total_size < size || total_size > BSON_MAX_SIZE) {
-        PyObject* InvalidBSON = _error("InvalidBSON");
-        if (InvalidBSON) {
-            PyErr_SetString(InvalidBSON, "objsize too large");
-            Py_DECREF(InvalidBSON);
-        }
-        return NULL;
-    }
-
-    if (size != total_size || string[size - 1]) {
-        PyObject* InvalidBSON = _error("InvalidBSON");
-        if (InvalidBSON) {
-            PyErr_SetString(InvalidBSON, "bad eoo");
-            Py_DECREF(InvalidBSON);
-        }
-        return NULL;
-    }
-
-    dict = elements_to_dict(self, string + 4, (unsigned)size - 5,
-                            as_class, tz_aware, uuid_subtype, compile_re);
-    if (!dict) {
-        return NULL;
-    }
-#if PY_MAJOR_VERSION >= 3
-    remainder = PyBytes_FromStringAndSize(string + size, total_size - size);
-#else
-    remainder = PyString_FromStringAndSize(string + size, total_size - size);
-#endif
-    if (!remainder) {
-        Py_DECREF(dict);
-        return NULL;
-    }
-    result = Py_BuildValue("OO", dict, remainder);
-    Py_DECREF(dict);
-    Py_DECREF(remainder);
-    return result;
+error:
+    Py_XDECREF(buffer);
+    Py_XDECREF(doc);
+    Py_XDECREF(remainder);
+    return NULL;
 }
 
-static PyObject* _cbson_decode_all(PyObject* self, PyObject* args) {
-    int size;
-    Py_ssize_t total_size;
-    const char* string;
+static PyObject *
+_cbson_decode_all(PyObject* self, PyObject* args) {
     PyObject* bson;
-    PyObject* dict;
-    PyObject* result;
+
+    /*
+     * TODO: use these.
+     */
     PyObject* as_class = (PyObject*)&PyDict_Type;
     unsigned char tz_aware = 1;
     unsigned char uuid_subtype = 3;
@@ -2310,88 +2258,13 @@ static PyObject* _cbson_decode_all(PyObject* self, PyObject* args) {
         return NULL;
     }
 
-#if PY_MAJOR_VERSION >= 3
-    if (!PyBytes_Check(bson)) {
-        PyErr_SetString(PyExc_TypeError, "argument to decode_all must be a bytes object");
-#else
-    if (!PyString_Check(bson)) {
-        PyErr_SetString(PyExc_TypeError, "argument to decode_all must be a string");
-#endif
-        return NULL;
-    }
-#if PY_MAJOR_VERSION >= 3
-    total_size = PyBytes_Size(bson);
-    string = PyBytes_AsString(bson);
-#else
-    total_size = PyString_Size(bson);
-    string = PyString_AsString(bson);
-#endif
-    if (!string) {
-        return NULL;
-    }
-
-    if (!(result = PyList_New(0)))
-        return NULL;
-
-    while (total_size > 0) {
-        if (total_size < BSON_MIN_SIZE) {
-            PyObject* InvalidBSON = _error("InvalidBSON");
-            if (InvalidBSON) {
-                PyErr_SetString(InvalidBSON,
-                                "not enough data for a BSON document");
-                Py_DECREF(InvalidBSON);
-            }
-            Py_DECREF(result);
-            return NULL;
-        }
-
-        memcpy(&size, string, 4);
-        if (size < BSON_MIN_SIZE) {
-            PyObject* InvalidBSON = _error("InvalidBSON");
-            if (InvalidBSON) {
-                PyErr_SetString(InvalidBSON, "invalid message size");
-                Py_DECREF(InvalidBSON);
-            }
-            Py_DECREF(result);
-            return NULL;
-        }
-
-        if (total_size < size) {
-            PyObject* InvalidBSON = _error("InvalidBSON");
-            if (InvalidBSON) {
-                PyErr_SetString(InvalidBSON, "objsize too large");
-                Py_DECREF(InvalidBSON);
-            }
-            Py_DECREF(result);
-            return NULL;
-        }
-
-        if (string[size - 1]) {
-            PyObject* InvalidBSON = _error("InvalidBSON");
-            if (InvalidBSON) {
-                PyErr_SetString(InvalidBSON, "bad eoo");
-                Py_DECREF(InvalidBSON);
-            }
-            Py_DECREF(result);
-            return NULL;
-        }
-
-        dict = elements_to_dict(self, string + 4, (unsigned)size - 5,
-                                as_class, tz_aware, uuid_subtype, compile_re);
-        if (!dict) {
-            Py_DECREF(result);
-            return NULL;
-        }
-        PyList_Append(result, dict);
-        Py_DECREF(dict);
-        string += size;
-        total_size -= size;
-    }
-
-    return result;
+    return (PyObject *)bson_buffer_new(bson);
 }
 
 static PyMethodDef _CBSONMethods[] = {
+    /*
+     * TODO: reimplement.
+     */
     {"_dict_to_bson", _cbson_dict_to_bson, METH_VARARGS,
      "convert a dictionary to a string containing its BSON representation."},
     {"_bson_to_dict", _cbson_bson_to_dict, METH_VARARGS,
