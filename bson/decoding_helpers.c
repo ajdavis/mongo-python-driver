@@ -229,6 +229,19 @@ bson_iter_py_value(bson_iter_t *iter, PyBSONBuffer *buffer)
     case BSON_TYPE_DOUBLE:
         ret = PyFloat_FromDouble(bson_iter_double(iter));
         break;
+    case BSON_TYPE_UTF8:
+        {
+           bson_uint32_t utf8_len;
+           const char *utf8;
+
+           utf8 = bson_iter_utf8(iter, &utf8_len);
+           if (!bson_utf8_validate(utf8, utf8_len, TRUE)) {
+               raise_invalid_bson("Invalid UTF8 string");
+               goto done;
+           }
+           ret = PyString_FromString(utf8);
+        }
+        break;
     case BSON_TYPE_DOCUMENT:
         {
             PyBSONDocument *doc;
@@ -282,19 +295,6 @@ bson_iter_py_value(bson_iter_t *iter, PyBSONBuffer *buffer)
         break;
     case BSON_TYPE_BINARY:
         ret = bson_iter_to_binary(iter);
-        break;
-    case BSON_TYPE_UTF8:
-        {
-           bson_uint32_t utf8_len;
-           const char *utf8;
-
-           utf8 = bson_iter_utf8(iter, &utf8_len);
-           if (!bson_utf8_validate(utf8, utf8_len, TRUE)) {
-               raise_invalid_bson("Invalid UTF8 string");
-               goto done;
-           }
-           ret = PyString_FromString(utf8);
-        }
         break;
     case BSON_TYPE_INT32:
         ret = PyInt_FromLong(bson_iter_int32(iter));
