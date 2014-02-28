@@ -119,8 +119,7 @@ bson_iter_nextitem_inflated(bson_doc_iterobject *iter)
     assert(iter);
     assert(iter->doc);
     doc = iter->doc;
-    assert(doc->keys);
-    size = PyList_Size(doc->keys);
+    size = doc->keys ? PyList_Size(doc->keys) : 0;
     if (iter->current_pos >= size) {
         /*
          * Completed.

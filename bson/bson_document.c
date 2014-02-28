@@ -316,6 +316,126 @@ error:
 }
 
 /*
+ * Adapted from dict_repr().
+ */
+static PyObject *
+bson_doc_repr(PyBSONDocument *doc)
+{
+    Py_ssize_t i;
+    PyObject *s = NULL;
+    PyObject *iter = NULL;
+    PyObject *temp = NULL;
+    PyObject *colon = NULL;
+    PyObject *pieces = NULL;
+    PyObject *result = NULL;
+    PyObject *pair = NULL;
+    PyObject *key = NULL;
+    PyObject *value = NULL;
+
+    /* Avoid recursion. */
+    i = Py_ReprEnter((PyObject *)doc);
+    if (i) {
+        return i > 0 ? PyString_FromString("{...}") : NULL;
+    }
+
+    pieces = PyList_New(0);
+    if (!pieces)
+        goto done;
+
+    colon = PyString_FromString(": ");
+    if (!colon)
+        goto done;
+
+    iter = PyBSONDocument_IterItems(doc);
+    if (!iter)
+        goto done;
+
+    while ((pair = PyIter_Next(iter))) {
+        int status;
+
+        key = PyTuple_GetItem(pair, 0);
+        if (!key)
+            goto done;
+
+        value = PyTuple_GetItem(pair, 1);
+        if (!value)
+            goto done;
+
+        /*
+         * Prevent repr from deleting value during key format.
+         * (This precaution is copied from Python's dict_repr.)
+         */
+        Py_INCREF(value);
+        s = PyObject_Repr(key);
+        PyString_Concat(&s, colon);
+        PyString_ConcatAndDel(&s, PyObject_Repr(value));
+        Py_DECREF(value);
+        if (!s)
+            goto done;
+
+        status = PyList_Append(pieces, s);
+        Py_CLEAR(s);
+        if (status < 0)
+            goto done;
+
+        Py_CLEAR(key);
+        Py_CLEAR(value);
+    }
+
+    /*
+     * PyIter_Next returns NULL on normal termination and on error.
+     */
+    if (PyErr_Occurred())
+        goto done;
+
+    if (PyList_GET_SIZE(pieces) == 0) {
+        result = PyString_FromString("{}");
+        goto done;
+    }
+
+    s = PyString_FromString("{");
+    if (!s)
+        goto done;
+
+    temp = PyList_GET_ITEM(pieces, 0);
+    PyString_ConcatAndDel(&s, temp);
+    PyList_SET_ITEM(pieces, 0, s);
+    if (!s)
+        goto done;
+
+    s = PyString_FromString("}");
+    if (!s)
+        goto done;
+
+    temp = PyList_GET_ITEM(pieces, PyList_GET_SIZE(pieces) - 1);
+    PyString_ConcatAndDel(&temp, s);
+    PyList_SET_ITEM(pieces, PyList_GET_SIZE(pieces) - 1, temp);
+    if (!temp)
+        goto done;
+
+    temp = NULL;
+
+    /* Paste them all together with ", " between. */
+    s = PyString_FromString(", ");
+    if (!s)
+        goto done;
+
+    result = _PyString_Join(s, pieces);
+
+done:
+    Py_XDECREF(s);
+    Py_XDECREF(iter);
+    Py_XDECREF(temp);
+    Py_XDECREF(colon);
+    Py_XDECREF(pieces);
+    Py_XDECREF(pair);
+    Py_XDECREF(key);
+    Py_XDECREF(value);
+    Py_ReprLeave((PyObject *)doc);
+    return result;
+}
+
+/*
  * TODO: For each PyDict_Type method, make a method that:
  *  - If this is already inflated, call dict method
  *  - If the method would modify, ensure inflated and call dict method
@@ -456,7 +576,7 @@ static PyTypeObject PyBSONDocument_Type = {
     0,                       /* tp_getattr */
     0,                       /* tp_setattr */
     0,                       /* tp_compare */
-    0,                       /* tp_repr */
+    (reprfunc)bson_doc_repr, /* tp_repr */
     0,                       /* tp_as_number */
     0,                       /* tp_as_sequence */
     &bson_doc_as_mapping,    /* tp_as_mapping */
@@ -534,6 +654,12 @@ init_bson_document(PyObject* module)
 {
     PyBSONDocument_Type.tp_base = &PyDict_Type;
     if (PyType_Ready(&PyBSONDocument_Type) < 0)
+        return -1;
+
+    Py_INCREF(&PyBSONDocument_Type);
+    if (PyModule_AddObject(module,
+                           "BSONDocument",
+                           (PyObject *)&PyBSONDocument_Type) < 0)
         return -1;
 
     return 0;

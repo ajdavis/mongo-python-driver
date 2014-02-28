@@ -26,15 +26,32 @@ from bson.py3compat import b
 sys.path[0:0] = [""]
 
 try:
-    from bson._cbson import BSONBuffer
+    from bson._cbson import BSONBuffer, BSONDocument
 except ImportError:
     BSONBuffer = None
+    BSONDocument = None
 
 
 class TestBSONDocument(unittest.TestCase):
     def setUp(self):
         if not BSONBuffer:
             raise SkipTest("_cbson not compiled")
+
+    def test_repr(self):
+        array = bytearray(BSON.encode(SON([('foo', 'bar'), ('oof', 1)])))
+        buf = BSONBuffer(array)
+        doc = next(buf)
+        expected_repr = '{%r: %r, %r: %r}' % ('foo', 'bar', 'oof', 1)
+        self.assertEqual(expected_repr, repr(doc))
+        doc.inflate()
+        self.assertEqual(expected_repr, repr(doc))
+
+        del doc['foo']
+        doc['recurse'] = doc
+        expected_repr = '{%r: %r, %r: {...}}' % ('oof', 1, 'recurse')
+        self.assertEqual(expected_repr, repr(doc))
+
+        self.assertEqual('{}', repr(BSONDocument()))
 
     def test_iteritems(self):
         array = bytearray(BSON.encode(SON([('foo', 'bar'), ('oof', 1)])))
