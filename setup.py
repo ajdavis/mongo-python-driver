@@ -214,6 +214,7 @@ c_ext = Feature(
     ext_modules=[Extension('bson._cbson',
                            include_dirs=['bson', '/usr/local/include/libbson-1.0'],
                            sources=glob.glob('bson/*.c'),
+                           extra_compile_args=['-fno-strict-aliasing'],
                            extra_link_args=['-L/usr/local/lib', '-lbson-1.0']),
                  Extension('pymongo._cmessage',
                            include_dirs=['bson'],
