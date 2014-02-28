@@ -154,11 +154,13 @@ done:
     Py_XDECREF(binary_class);
     return ret;
 }
+
 /*
  * Decode a BSON binary, or return NULL and set exception.
  */
 static PyObject *
-bson_iter_to_binary(bson_iter_t *iter) {
+bson_iter_to_binary(bson_iter_t *iter)
+{
     bson_subtype_t binary_subtype;
     bson_uint32_t binary_len;
     const bson_uint8_t *binary_data;
