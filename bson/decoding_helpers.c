@@ -297,7 +297,7 @@ bson_iter_py_value(bson_iter_t *iter, PyBSONBuffer *buffer)
         }
         break;
     case BSON_TYPE_INT32:
-        ret = PyLong_FromLong(bson_iter_int32(iter));
+        ret = PyInt_FromLong(bson_iter_int32(iter));
         break;
     case BSON_TYPE_INT64:
         ret = PyLong_FromLongLong(bson_iter_int64(iter));
