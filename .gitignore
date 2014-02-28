@@ -15,3 +15,5 @@ nosetests.xml
 setup.cfg
 *.egg
 .tox
+*.gcno
+*.gcda
