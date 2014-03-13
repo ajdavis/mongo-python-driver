@@ -801,11 +801,11 @@ static int _write_element_to_buffer(PyObject* self, buffer_t buffer,
 
     if (PyBool_Check(value)) {
 #if PY_MAJOR_VERSION >= 3
-        const long bool = PyLong_AsLong(value);
+        const long b = PyLong_AsLong(value);
 #else
-        const long bool = PyInt_AsLong(value);
+        const long b = PyInt_AsLong(value);
 #endif
-        const char c = bool ? 0x01 : 0x00;
+        const char c = b ? 0x01 : 0x00;
         *(buffer_get_buffer(buffer) + type_byte) = 0x08;
         return buffer_write_bytes(buffer, &c, 1);
     }
