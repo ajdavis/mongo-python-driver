@@ -38,11 +38,11 @@ typedef struct PyBSONDocument {
     /* Buffer from which we're reading. Not reference-counted. */
     PyBSONBuffer *buffer;
     /* This document's offset into array. */
-    bson_off_t offset;
+    off_t offset;
     /* This document's length. */
-    bson_uint32_t length;
+    int length;
     /* How many times were we accessed before inflating? */
-    unsigned char n_accesses;
+    char n_accesses;
     /* Neighbors in list of documents, all pointing to the same buffer. */
     struct PyBSONDocument *prev, *next;
     /* Preserve key order after we inflate. */
@@ -51,13 +51,13 @@ typedef struct PyBSONDocument {
 
 /*
  * Replace linear access with a hash table.
- * Does not release the buffer. Returns TRUE on success.
+ * Does not release the buffer. Returns 1 on success.
  */
 int
 bson_doc_inflate(PyBSONDocument *doc);
 
 /*
- * Call inflate() and release the buffer. Returns TRUE on success.
+ * Call inflate() and release the buffer. Returns 1 on success.
  */
 int
 bson_doc_detach(PyBSONDocument *doc);
@@ -66,7 +66,7 @@ bson_doc_detach(PyBSONDocument *doc);
  * Create a PyBSONDocument.
  */
 PyBSONDocument *
-PyBSONDocument_New(PyBSONBuffer *buffer, bson_off_t start, bson_off_t end);
+PyBSONDocument_New(PyBSONBuffer *buffer, off_t start, off_t end);
 
 /*
  * Add PyBSONDocument and related functions to module.

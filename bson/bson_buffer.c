@@ -38,9 +38,9 @@ bson_buffer_attach_doc(PyBSONBuffer *buffer, PyBSONDocument *doc)
 
 PyObject *
 PyBSONBuffer_IterNext(PyBSONBuffer *buffer) {
-    bson_off_t start;
-    bson_off_t end;
-    bson_bool_t eof = FALSE;
+    off_t start;
+    off_t end;
+    bool eof = 0;
     PyBSONDocument *doc = NULL;
     bson_reader_t *reader = buffer->reader;
 
@@ -132,7 +132,7 @@ bson_buffer_init(PyBSONBuffer *buffer, PyObject *data)
      * TODO: Does this have to be a separate allocation from the BSONBuffer?
      */
     bson_reader_t *reader = NULL;
-    bson_size_t buffer_size;
+    size_t buffer_size;
     PyObject *array = NULL;
 
     if (PyByteArray_Check(data)) {
@@ -149,7 +149,7 @@ bson_buffer_init(PyBSONBuffer *buffer, PyObject *data)
 
     buffer_size = PyByteArray_Size(array);
     reader = bson_reader_new_from_data(
-            (bson_uint8_t *)PyByteArray_AsString(array),
+            (uint8_t *)PyByteArray_AsString(array),
             buffer_size);
 
     if (!reader)
@@ -158,8 +158,8 @@ bson_buffer_init(PyBSONBuffer *buffer, PyObject *data)
     buffer->array = array;
     buffer->reader = reader;
     buffer->dependents = NULL;
-    buffer->valid = TRUE;
-    return TRUE;
+    buffer->valid = 1;
+    return 1;
 
 error:
     buffer->array = NULL;
@@ -169,8 +169,8 @@ error:
 
     buffer->reader = NULL;
     buffer->dependents = NULL;
-    buffer->valid = FALSE;
-    return FALSE;
+    buffer->valid = 0;
+    return 0;
 }
 
 static int

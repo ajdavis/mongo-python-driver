@@ -28,7 +28,7 @@ typedef struct {
 } bson_and_iter_t;
 
 /*
- * Initialize a bson_t and bson_iter_t, or set exception and return FALSE.
+ * Initialize a bson_t and bson_iter_t, or set exception and return 0.
  */
 int
 bson_doc_iter_init(PyBSONDocument *doc, bson_and_iter_t *bson_and_iter);

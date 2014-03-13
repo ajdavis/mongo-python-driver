@@ -22,7 +22,7 @@
 #include "invalid_bson.h"
 
 /*
- * Initialize a bson_t and bson_iter_t, or set exception and return FALSE.
+ * Initialize a bson_t and bson_iter_t, or set exception and return 0.
  */
 int
 bson_doc_iter_init(PyBSONDocument *doc, bson_and_iter_t *bson_and_iter)
@@ -43,12 +43,12 @@ bson_doc_iter_init(PyBSONDocument *doc, bson_and_iter_t *bson_and_iter)
     if (!bson_iter_init(&bson_and_iter->iter, &bson_and_iter->bson))
         goto error;
 
-    return TRUE;
+    return 1;
 
 error:
     PyErr_SetString(PyExc_RuntimeError,
                     "Internal error in bson_doc_iter_init.");
-    return FALSE;
+    return 0;
 }
 
 /*
@@ -237,7 +237,7 @@ bson_iter_py_value(bson_iter_t *iter, PyBSONBuffer *buffer)
            const char *utf8;
 
            utf8 = bson_iter_utf8(iter, &utf8_len);
-           if (!bson_utf8_validate(utf8, utf8_len, TRUE)) {
+           if (!bson_utf8_validate(utf8, utf8_len, 1)) {
                raise_invalid_bson("Invalid UTF8 string");
                goto done;
            }
@@ -247,7 +247,7 @@ bson_iter_py_value(bson_iter_t *iter, PyBSONBuffer *buffer)
     case BSON_TYPE_DOCUMENT:
         {
             PyBSONDocument *doc;
-            bson_off_t start;
+            off_t start;
             bson_uint8_t *buffer_ptr =
                     (bson_uint8_t *)PyByteArray_AsString(buffer->array);
 
@@ -257,11 +257,11 @@ bson_iter_py_value(bson_iter_t *iter, PyBSONBuffer *buffer)
                 goto done;
             }
 
-            start = (bson_off_t)(child_iter.raw - buffer_ptr);
+            start = (off_t)(child_iter.raw - buffer_ptr);
             doc = PyBSONDocument_New(
                     buffer,
                     start,
-                    (bson_off_t)(start + child_iter.len));
+                    (off_t)(start + child_iter.len));
 
             if (doc)
                 bson_buffer_attach_doc(buffer, doc);

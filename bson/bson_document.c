@@ -40,7 +40,7 @@ bson_doc_detach_buffer(PyBSONDocument *doc)
 }
 
 /*
- * Replace linear access with a hash table, or set exception and return FALSE.
+ * Replace linear access with a hash table, or set exception and return 0.
  * Does not release the buffer.
  */
 int
@@ -50,7 +50,7 @@ bson_doc_inflate(PyBSONDocument *doc)
     PyObject *value = NULL;
     bson_and_iter_t bson_and_iter;
     if (IS_INFLATED(doc))
-        return TRUE;
+        return 1;
 
     assert(!doc->keys);
     doc->keys = PyList_New(0);
@@ -91,28 +91,28 @@ bson_doc_inflate(PyBSONDocument *doc)
     }
 
     bson_doc_detach_buffer(doc);
-    return TRUE;
+    return 1;
 
 error:
     PyDict_Clear((PyObject *)doc);
     Py_CLEAR(doc->keys);
     Py_XDECREF(key);
     Py_XDECREF(value);
-    return FALSE;
+    return 0;
 }
 
 /*
- * Call inflate() and release the buffer, or set exception and return FALSE.
+ * Call inflate() and release the buffer, or set exception and return 0.
  */
 int
 bson_doc_detach(PyBSONDocument *doc)
 {
     if (!bson_doc_inflate(doc))
-        return FALSE;
+        return 0;
 
     /* Not reference-counted. */
     doc->buffer = NULL;
-    return TRUE;
+    return 1;
 }
 
 static Py_ssize_t
@@ -613,7 +613,7 @@ static PyTypeObject PyBSONDocument_Type = {
  * TODO: start and length might be cleaner than start and end.
  */
 PyBSONDocument *
-PyBSONDocument_New(PyBSONBuffer *buffer, bson_off_t start, bson_off_t end)
+PyBSONDocument_New(PyBSONBuffer *buffer, off_t start, off_t end)
 {
     PyBSONDocument *doc;
     PyObject *init_args = NULL;
