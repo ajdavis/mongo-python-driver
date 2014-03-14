@@ -30,8 +30,8 @@ bson_doc_iter_init(PyBSONDocument *doc, bson_and_iter_t *bson_and_iter)
     if (!doc->buffer)
         goto error;
 
-    bson_uint8_t *buffer_ptr =
-            (bson_uint8_t *)PyByteArray_AsString(doc->buffer->array)
+    uint8_t *buffer_ptr =
+            (uint8_t *)PyByteArray_AsString(doc->buffer->array)
             + doc->offset;
 
     if (!bson_init_static(
@@ -56,8 +56,8 @@ error:
  */
 static PyObject *
 binary_data_to_py_bytes(
-        const bson_uint8_t *binary_data,
-        bson_uint32_t binary_len)
+        const uint8_t *binary_data,
+        uint32_t binary_len)
 {
 #if PY_MAJOR_VERSION >= 3
     return PyBytes_FromStringAndSize((const char *)binary_data, binary_len);
@@ -70,7 +70,7 @@ binary_data_to_py_bytes(
  * Return a UUID object or set exception and return NULL.
  */
 static PyObject *
-bson_data_to_uuid(const bson_uint8_t *binary_data)
+bson_data_to_uuid(const uint8_t *binary_data)
 {
     PyObject *data = binary_data_to_py_bytes(binary_data, 16);
     PyObject *kwargs = PyDict_New();
@@ -115,8 +115,8 @@ done:
  */
 static PyObject *
 bson_data_to_binary(
-        const bson_uint8_t *binary_data,
-        bson_uint32_t binary_len,
+        const uint8_t *binary_data,
+        uint32_t binary_len,
         bson_subtype_t binary_subtype)
 {
     PyObject *binary_module = NULL;
@@ -162,8 +162,8 @@ static PyObject *
 bson_iter_to_binary(bson_iter_t *iter)
 {
     bson_subtype_t binary_subtype;
-    bson_uint32_t binary_len;
-    const bson_uint8_t *binary_data;
+    uint32_t binary_len;
+    const uint8_t *binary_data;
     PyObject *ret = NULL;
 
     bson_iter_binary(
@@ -233,7 +233,7 @@ bson_iter_py_value(bson_iter_t *iter, PyBSONBuffer *buffer)
         break;
     case BSON_TYPE_UTF8:
         {
-           bson_uint32_t utf8_len;
+           uint32_t utf8_len;
            const char *utf8;
 
            utf8 = bson_iter_utf8(iter, &utf8_len);
@@ -248,8 +248,8 @@ bson_iter_py_value(bson_iter_t *iter, PyBSONBuffer *buffer)
         {
             PyBSONDocument *doc;
             off_t start;
-            bson_uint8_t *buffer_ptr =
-                    (bson_uint8_t *)PyByteArray_AsString(buffer->array);
+            uint8_t *buffer_ptr =
+                    (uint8_t *)PyByteArray_AsString(buffer->array);
 
             bson_iter_t child_iter;
             if (!bson_iter_recurse(iter, &child_iter)) {

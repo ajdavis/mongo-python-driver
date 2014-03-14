@@ -645,7 +645,7 @@ PyBSONDocument_New(PyBSONBuffer *buffer, off_t start, off_t end)
     /*
      * TODO: check for overflow.
      */
-    doc->length = (bson_uint32_t)(end - start);
+    doc->length = end - start;
     return doc;
 }
 
