@@ -20,7 +20,7 @@ import uuid
 
 from nose.plugins.skip import SkipTest
 
-from bson import SON, BSON, Binary
+from bson import SON, BSON, Binary, ObjectId
 from bson.py3compat import b
 
 sys.path[0:0] = [""]
@@ -81,10 +81,12 @@ class TestBSONDocument(unittest.TestCase):
         self.assertEqual([('a', 1)], list(doc.iteritems()))
 
     def test_types(self):
+        my_id = ObjectId()
         my_binary = Binary(b('foo'), subtype=2)  # Random subtype.
         my_uuid = uuid.uuid4()
 
         bson_bytes = BSON.encode(SON([
+            ('_id', my_id),
             ('double', 1.5),
             ('document', {'k': 'v'}),
             ('array', [1, 'foo', 1.5]),
@@ -97,11 +99,13 @@ class TestBSONDocument(unittest.TestCase):
 
         array = bytearray(bson_bytes)
         local_buffer = [None]
+
         def get_doc():
             # Keep recreating the doc to avoid auto-inflation.
             local_buffer[0] = buf = BSONBuffer(array)
             return next(buf)
 
+        self.assertEqual(my_id, get_doc()['_id'])
         self.assertEqual(1.5, get_doc()['double'])
         self.assertEqual('v', get_doc()['document']['k'])
         self.assertEqual([1, 'foo', 1.5], get_doc()['array'])
