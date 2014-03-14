@@ -43,7 +43,7 @@ PyObject *
 PyBSONBuffer_IterNext(PyBSONBuffer *buffer) {
     off_t start;
     off_t end;
-    bool eof = 0;
+    unsigned int eof = 0;
     PyBSONDocument *doc = NULL;
     bson_reader_t *reader = buffer->reader;
 
