@@ -1,0 +1,208 @@
+BSONString: stringlike pointer to buffer
+
+PyBSONDocument: inherits from dict
+    bson_document.h
+        int
+        bson_doc_inflate(PyBSONDocument *doc)
+
+        int
+        bson_doc_detach(PyBSONDocument *doc)
+
+        PyObject *
+        PyBSONDocument_New(BSONBuffer *buffer, off_t start, off_t end)
+
+        init_bson_document(PyObject *module)
+
+    bson_document.c
+        struct PyBSONDocument
+
+        int
+        bson_doc_inflate(PyBSONDocument *doc)
+
+        int
+        bson_doc_detach(PyBSONDocument *doc)
+
+        static PyObject *
+        bson_doc_is_inflated(PyBSONDocument *doc)
+
+        static Py_ssize_t
+        bson_doc_length(PyBSONDocument *doc)
+
+        static PyObject *
+        bson_doc_contains(PyBSONDocument *doc, PyObject *key) -> PyBool
+
+        static PyObject *
+        bson_doc_subscript(PyBSONDocument *doc, PyObject *key) -> value
+        
+        static PyObject *
+        bson_doc_has_key -> PyBool
+                            
+        static PyObject *
+        bson_doc_get -> value or None
+                            
+        static PyObject *
+        bson_doc_setdefault -> inflate and call super
+                            
+        static PyObject *
+        bson_doc_pop -> inflate and call super
+                            
+        static PyObject *
+        bson_doc_popitem -> inflate and call super
+        
+        static PyObject *
+        bson_doc_items -> list of 2-tuples
+                           
+        static PyObject *
+        bson_doc_values -> list of values
+                           
+        static PyObject *
+        bson_doc_update -> inflate and call super
+                           
+        static PyObject *
+        bson_doc_copy -> PyBSONDocument or PyDict?
+                           
+        static int
+        bson_doc_ass_sub(PyBSONDocument *doc, PyObject *key, PyObject *value)
+            -> inflate and call super
+
+        static PyObject *
+        bson_doc_keys(PyBSONDocument *doc, PyObject *args) -> PyList
+
+        struct BSONDocument_Type
+
+        static PyObject *
+        PyBSONDocument_New(BSONBuffer *buffer, off_t start, off_t end)
+
+        init_bson_document(PyObject *module)
+
+
+BSONDocumentIterKey,
+BSONDocumentIterValue,
+BSONDocumentIterItem: iterators over a document
+
+    bson_document_iter.h
+        PyObject *
+        PyBSONDocument_IterKeys(PyBSONDocument *doc)
+
+        PyObject *
+        PyBSONDocument_IterValues(PyBSONDocument *doc)
+
+        PyObject *
+        PyBSONDocument_IterItems(PyBSONDocument *doc)
+
+        init_bson_document_iter(PyObject *module)
+
+    bson_document_iter.c
+        struct bson_doc_iterobject
+
+        static void
+        BSONDocIter_Dealloc
+
+        struct BSONDocumentIterKey_Type
+
+        struct BSONDocumentIterValue_Type
+
+        static PyObject *
+        bson_iter_nextitem_uninflated
+
+        static PyObject *
+        bson_iter_nextitem_inflated
+
+        static PyObject *
+        BSONDocIter_NextItem
+
+        struct BSONDocumentIterItem_Type
+
+        static PyObject *
+        bson_doc_keys_new
+
+        static PyObject *
+        bson_doc_values_new
+
+        static PyObject *
+        bson_doc_items_new
+
+        static PyObject *
+        bson_doc_iter_new(PyBSONDocument *doc, PyTypeObject *itertype)
+
+        PyObject *
+        bson_doc_iter(PyBSONDocument *doc, PyTypeObject *itertype)
+
+        PyObject *
+        PyBSONDocument_IterKeys(PyBSONDocument *doc) -> bson_doc_iter_new()
+
+        PyObject *
+        PyBSONDocument_IterValues(PyBSONDocument *doc) -> bson_doc_iter_new()
+
+        PyObject *
+        PyBSONDocument_IterItems -> bson_doc_iter_new()
+
+        init_bson_document_iter(PyObject *module)
+
+
+BSONBuffer: wraps a bytearray, iterable, produces BSONDocuments
+    TODO:
+        Is BSONBuffer a weird name?
+        BSONBufferReader?
+        BSONBufferIterator?
+
+    bson_buffer.h
+        struct BSONBuffer
+
+        /*
+         * Detach doc from buffer, or set exception and return FALSE.
+         *     Called from bson_doc_detach(). Modifies buffer, not doc.
+         */
+        int
+        bson_buffer_detach(PyBSONDocument *doc)
+
+        PyObject *
+        PyBSONBuffer_IterNext(PyBSONBuffer *buffer)
+
+        PyBSONBuffer *
+        bson_buffer_new(PyObject *array)
+
+        init_bson_buffer(PyObject *module)
+
+    bson_buffer.c
+        int
+        bson_buffer_detach_doc(PyBSONDocument *doc)
+
+        static int
+        bson_buffer_attach_doc(PyBSONDocument *doc)
+
+        static PyObject *
+        BSONBuffer_IterNext
+
+        int
+        BSONBuffer_Init(BSONBuffer *self, PyObject *args, PyObject *kwds)
+
+        static void
+        BSONBuffer_Dealloc(BSONBuffer* self)
+
+        BSONBuffer_Type
+
+        PyBSONBuffer *
+        bson_buffer_new(PyObject *array)
+
+        init_bson_buffer(PyObject *module)
+
+
+Decode helpers
+    decoding_helpers.h
+        struct bson_and_iter_t
+
+        int
+        bson_doc_iter_init(PyBSONDocument *doc, bson_and_iter_t *bson_and_iter)
+
+        PyObject *
+        bson_iter_py_value(bson_iter_t *iter)
+
+    decoding_helpers.c
+        int
+        bson_doc_iter_init(PyBSONDocument *doc, bson_and_iter_t *bson_and_iter)
+
+        /* ... helpers for various BSON types ... */
+
+        PyObject *
+        bson_iter_py_value(bson_iter_t *iter)
