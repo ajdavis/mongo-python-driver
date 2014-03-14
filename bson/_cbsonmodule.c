@@ -71,6 +71,9 @@ static struct module_state _state;
 /* Maximum number of regex flags */
 #define FLAGS_SIZE 7
 
+/*
+ * TODO: delete, this is moved do decoding_helpers.c.
+ */
 #define JAVA_LEGACY   5
 #define CSHARP_LEGACY 6
 /* The smallest possible BSON document, i.e. "{}" */
@@ -376,6 +379,9 @@ static int write_element_to_buffer(PyObject* self, buffer_t buffer,
     return result;
 }
 
+/*
+ * TODO: remove.
+ */
 static void
 _fix_java(const char* in, char* out) {
     int i, j;
