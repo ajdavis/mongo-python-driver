@@ -20,6 +20,7 @@
 
 #include "bson.h"
 
+#include "invalid_bson.h"
 #include "utlist.h"
 #include "bson_document.h"
 #include "bson_buffer.h"
@@ -47,16 +48,7 @@ PyBSONBuffer_IterNext(PyBSONBuffer *buffer) {
     bson_reader_t *reader = buffer->reader;
 
     if (!buffer->valid) {
-        PyObject* InvalidBSON;
-        PyObject* errors = PyImport_ImportModule("bson.errors");
-        if (!errors)
-            goto error;
-        InvalidBSON = PyObject_GetAttrString(errors, "InvalidBSON");
-        Py_DECREF(errors);
-        if (!InvalidBSON)
-            goto error;
-        PyErr_SetString(InvalidBSON, "Buffer contained invalid BSON.");
-        Py_DECREF(InvalidBSON);
+        raise_invalid_bson("Buffer contains invalid BSON");
         goto error;
     }
     if (!reader) {
@@ -84,19 +76,7 @@ PyBSONBuffer_IterNext(PyBSONBuffer *buffer) {
             PyErr_SetNone(PyExc_StopIteration);
             return NULL;
         } else {
-            /*
-             * Raise InvalidBSON exception.
-             */
-            PyObject* InvalidBSON;
-            PyObject* errors = PyImport_ImportModule("bson.errors");
-            if (!errors)
-                goto error;
-            InvalidBSON = PyObject_GetAttrString(errors, "InvalidBSON");
-            Py_DECREF(errors);
-            if (!InvalidBSON)
-                goto error;
-            PyErr_SetString(InvalidBSON, "Buffer contained invalid BSON.");
-            Py_DECREF(InvalidBSON);
+            raise_invalid_bson("Buffer contains invalid BSON");
             goto error;
         }
     }
