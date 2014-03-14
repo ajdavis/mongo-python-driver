@@ -19,7 +19,7 @@
 
 struct PyBSONDocument; /* Forward declaration. */
 
-typedef struct {
+typedef struct PyBSONBuffer {
     PyObject_HEAD
     /* Doubly-linked list of active BSONDocuments referring to this buffer. */
     struct PyBSONDocument *dependents;
@@ -33,9 +33,6 @@ typedef struct {
 
 void
 bson_buffer_attach_doc(PyBSONBuffer *buffer, struct PyBSONDocument *doc);
-
-PyObject *
-PyBSONBuffer_IterNext(PyBSONBuffer *buffer);
 
 /*
  * Create a new PyBSONBuffer, or set exception and return NULL.

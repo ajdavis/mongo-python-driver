@@ -22,6 +22,7 @@
 #include "utlist.h"
 #include "bson_document.h"
 #include "bson_buffer.h"
+#include "bson_buffer_iter.h"
 
 /*
  * Add doc to list of dependents.
@@ -37,70 +38,6 @@ bson_buffer_attach_doc(PyBSONBuffer *buffer, PyBSONDocument *doc)
     DL_APPEND(buffer->dependents, doc);
 }
 
-PyObject *
-PyBSONBuffer_IterNext(PyBSONBuffer *buffer) {
-    off_t start;
-    off_t end;
-    unsigned int eof = 0;
-    PyBSONDocument *doc = NULL;
-    bson_reader_t *reader = buffer->reader;
-
-    if (!buffer->valid) {
-        raise_invalid_bson("Buffer contains invalid BSON");
-        goto error;
-    }
-    if (!reader) {
-        /*
-         * Finished.
-         */
-        PyErr_SetNone(PyExc_StopIteration);
-        return NULL;
-    }
-
-    start = bson_reader_tell(reader);
-    /*
-     * TODO: useful? or just read the length prefix ?
-     */
-    if (!bson_reader_read(reader, &eof)) {
-        /*
-         * This was the last document, or there was an error.
-         */
-        bson_reader_destroy(reader);
-        reader = buffer->reader = NULL;
-        if (eof) {
-            /*
-             * Normal completion.
-             */
-            PyErr_SetNone(PyExc_StopIteration);
-            return NULL;
-        } else {
-            raise_invalid_bson("Buffer contains invalid BSON");
-            goto error;
-        }
-    }
-
-    end = bson_reader_tell(reader);
-    doc = PyBSONDocument_New(buffer, start, end);
-    if (!doc)
-        goto error;
-
-    bson_buffer_attach_doc(buffer, doc);
-    return (PyObject *)doc;
-
-error:
-    /*
-     * Invalidate the iterator.
-     */
-    if (reader) {
-        bson_reader_destroy(reader);
-    }
-
-    buffer->reader = NULL;
-    buffer->valid = 0;
-    Py_XDECREF(doc);
-    return NULL;
-}
-
 /*
  * Common functionality: Initialize a PyBSONBuffer,
  * or set exception and return false.
@@ -109,13 +46,7 @@ static int
 bson_buffer_init(PyBSONBuffer *buffer, PyObject *data, PyObject *as_class,
                  int tz_aware, int uuid_subtype, int compile_re)
 {
-    /*
-     * TODO: as_class.
-     */
-    bson_reader_t *reader = NULL;
-    size_t buffer_size;
     PyObject *array = NULL;
-
     if (PyByteArray_Check(data)) {
         array = data;
         Py_INCREF(array);
@@ -128,33 +59,19 @@ bson_buffer_init(PyBSONBuffer *buffer, PyObject *data, PyObject *as_class,
         goto error;
     }
 
-    buffer_size = PyByteArray_Size(array);
-    reader = bson_reader_new_from_data((uint8_t *)PyByteArray_AsString(array),
-                                       buffer_size);
-
-    if (!reader)
-        goto error;
-
     buffer->array = array;
-    buffer->reader = reader;
     buffer->dependents = NULL;
     buffer->as_class = as_class;
     Py_XINCREF(as_class);
     buffer->tz_aware = tz_aware;
     buffer->uuid_subtype = uuid_subtype;
     buffer->compile_re = compile_re;
-    buffer->valid = 1;
     return 1;
 
 error:
     buffer->array = NULL;
     Py_XDECREF(array);
-    if (reader)
-        bson_reader_destroy(reader);
-
-    buffer->reader = NULL;
     buffer->dependents = NULL;
-    buffer->valid = 0;
     return 0;
 }
 
@@ -200,9 +117,6 @@ BSONBuffer_Dealloc(PyBSONBuffer* self)
         bson_doc_inflate(doc);
     }
 
-    if (self->reader)
-        bson_reader_destroy(self->reader);
-
     Py_XDECREF(self->array);
     self->ob_type->tp_free((PyObject*)self);
 }
@@ -228,27 +142,25 @@ static PyTypeObject PyBSONBuffer_Type = {
     0,                         /*tp_getattro*/
     0,                         /*tp_setattro*/
     0,                         /*tp_as_buffer*/
-    /* Py_TPFLAGS_HAVE_ITER tells Python to
-       use tp_iter and tp_iternext fields. */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_ITER,
-    "PyBSONDocument lazy-loading iterator.", /* tp_doc */
-    0,                         /* tp_traverse */
-    0,                         /* tp_clear */
-    0,                         /* tp_richcompare */
-    0,                         /* tp_weaklistoffset */
-    PyObject_SelfIter,         /* tp_iter: __iter__() method */
-    (iternextfunc)PyBSONBuffer_IterNext, /* tp_iternext: next() method */
-    0,                         /* tp_methods */
-    0,                         /* tp_members */
-    0,                         /* tp_getset */
-    0,                         /* tp_base */
-    0,                         /* tp_dict */
-    0,                         /* tp_descr_get */
-    0,                         /* tp_descr_set */
-    0,                         /* tp_dictoffset */
-    (initproc)bson_buffer_initproc, /* tp_init */
-    0,                         /* tp_alloc */
-    0,                         /* tp_new */
+    Py_TPFLAGS_DEFAULT,        /*tp_flags */
+    "Buffer of BSON bytes.",   /*tp_doc */
+    0,                         /*tp_traverse */
+    0,                         /*tp_clear */
+    0,                         /*tp_richcompare */
+    0,                         /*tp_weaklistoffset */
+    (getiterfunc)bson_buffer_iter_new, /*tp_iter: __iter__() method*/
+    0,                         /*tp_iternext*/
+    0,                         /*tp_methods*/
+    0,                         /*tp_members*/
+    0,                         /*tp_getset*/
+    0,                         /*tp_base*/
+    0,                         /*tp_dict*/
+    0,                         /*tp_descr_get*/
+    0,                         /*tp_descr_set*/
+    0,                         /*tp_dictoffset*/
+    (initproc)bson_buffer_initproc, /*tp_init*/
+    0,                         /*tp_alloc*/
+    0,                         /*tp_new*/
 };
 
 PyBSONBuffer *

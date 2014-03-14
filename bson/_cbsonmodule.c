@@ -30,6 +30,7 @@
 #include "bson_document.h"
 #include "bson_document_iter.h"
 #include "bson_buffer.h"
+#include "bson_buffer_iter.h"
 
 #define _CBSON_MODULE
 #include "_cbsonmodule.h"
@@ -2201,6 +2202,7 @@ static PyObject* elements_to_dict(PyObject* self, const char* string,
 static PyObject* _cbson_bson_to_dict(PyObject* self, PyObject* args) {
     PyObject * bson = NULL;
     PyBSONBuffer *buffer = NULL;
+    PyObject *iter = NULL;
     PyObject *doc = NULL;
     PyObject *remainder = NULL;
 
@@ -2221,7 +2223,11 @@ static PyObject* _cbson_bson_to_dict(PyObject* self, PyObject* args) {
     if (!buffer)
         goto error;
 
-    doc = PyBSONBuffer_IterNext(buffer);
+    iter = PyObject_GetIter((PyObject *)buffer);
+    if (!iter)
+        goto error;
+
+    doc = PyIter_Next(iter);
     if (!doc)
         goto error;
 
@@ -2240,6 +2246,7 @@ static PyObject* _cbson_bson_to_dict(PyObject* self, PyObject* args) {
 
 error:
     Py_XDECREF(buffer);
+    Py_XDECREF(iter);
     Py_XDECREF(doc);
     Py_XDECREF(remainder);
     return NULL;
@@ -2370,16 +2377,20 @@ init_cbson(void)
     if (PyModule_AddObject(m, "_C_API", c_api_object) < 0)
         goto error;
 
-    /* Add PyBSONDocument type */
+    /* Add BSONDocument type. */
     if (init_bson_document(m) < 0)
         goto error;
 
-    /* Add PyBSONDocument iterators */
+    /* Initialize BSONDocument iterator types. */
     if (init_bson_document_iter(m) < 0 )
         goto error;
 
-    /* Add BSONBuffer type */
+    /* Add BSONBuffer type. */
     if (init_bson_buffer(m) < 0)
+        goto error;
+
+    /* Initialize BSONBufferIter type. */
+    if (init_bson_buffer_iter(m) < 0)
         goto error;
 
 #if PY_MAJOR_VERSION >= 3

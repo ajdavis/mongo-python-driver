@@ -552,7 +552,7 @@ bson_doc_init(PyBSONDocument *doc, PyObject *args, PyObject *kwds)
 	 */
     if ((args && PyObject_Length(args) > 0)
     		|| (kwds && PyObject_Length(kwds) > 0)) {
-    	PyErr_SetString(PyExc_TypeError, "PyBSONDocument takes no arguments");
+    	PyErr_SetString(PyExc_TypeError, "BSONDocument takes no arguments");
     	return -1;
     }
     if (PyDict_Type.tp_init((PyObject *)doc, args, kwds) < 0) {
@@ -568,7 +568,7 @@ bson_doc_init(PyBSONDocument *doc, PyObject *args, PyObject *kwds)
 static PyTypeObject PyBSONDocument_Type = {
     PyObject_HEAD_INIT(NULL)
     0,                       /* ob_size */
-    "bson.PyBSONDocument",     /* tp_name */
+    "bson.BSONDocument",     /* tp_name */
     sizeof(PyBSONDocument),    /* tp_basicsize */
     0,                       /* tp_itemsize */
     (destructor)bson_doc_dealloc, /* tp_dealloc */
