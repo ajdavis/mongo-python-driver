@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include <stdbool.h>
+
 #include "Python.h"
 
 #include "bson.h"
