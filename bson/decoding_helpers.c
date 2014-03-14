@@ -21,6 +21,9 @@
 #include "bson_document.h"
 #include "invalid_bson.h"
 
+#define JAVA_LEGACY   5
+#define CSHARP_LEGACY 6
+
 /*
  * Initialize a bson_t and bson_iter_t, or set exception and return 0.
  */
@@ -66,11 +69,24 @@ binary_data_to_py_bytes(
 #endif
 }
 
+static void
+_fix_java(const uint8_t *in, uint8_t *out) {
+    int i, j;
+    for (i = 0, j = 7; i < j; i++, j--) {
+        out[i] = in[j];
+        out[j] = in[i];
+    }
+    for (i = 8, j = 15; i < j; i++, j--) {
+        out[i] = in[j];
+        out[j] = in[i];
+    }
+}
+
 /*
  * Return a UUID object or set exception and return NULL.
  */
 static PyObject *
-bson_data_to_uuid(const uint8_t *binary_data)
+bson_data_to_uuid(const uint8_t *binary_data, int uuid_subtype)
 {
     PyObject *data = binary_data_to_py_bytes(binary_data, 16);
     PyObject *kwargs = PyDict_New();
@@ -82,11 +98,25 @@ bson_data_to_uuid(const uint8_t *binary_data)
     if (!data || !args || !kwargs)
         goto done;
 
-    /*
-     * TODO: JAVA_LEGACY and CSHARP_LEGACY.
-     */
-    if (PyDict_SetItemString(kwargs, "bytes", data) < 0)
-        goto done;
+    if (uuid_subtype == CSHARP_LEGACY) {
+        /* Legacy C# byte order */
+        if ((PyDict_SetItemString(kwargs, "bytes_le", data)) < 0)
+            goto done;
+    }
+    else {
+        if (uuid_subtype == JAVA_LEGACY) {
+            /* Convert from legacy java byte order */
+            uint8_t big_endian[16];
+            _fix_java(binary_data, big_endian);
+            /* Free the previously created PyString object */
+            Py_DECREF(data);
+            data = binary_data_to_py_bytes(big_endian, 16);
+            if (!data)
+                goto done;
+        }
+        if ((PyDict_SetItemString(kwargs, "bytes", data)) < 0)
+            goto done;
+    }
 
     uuid_module = PyImport_ImportModule("uuid");
     if (!uuid_module)
@@ -97,8 +127,6 @@ bson_data_to_uuid(const uint8_t *binary_data)
         goto done;
 
     ret = PyObject_Call(uuid_class, args, kwargs);
-    if (!ret)
-        goto done;
 
 done:
     Py_XDECREF(data);
@@ -159,7 +187,7 @@ done:
  * Decode a BSON binary, or return NULL and set exception.
  */
 static PyObject *
-bson_iter_to_binary(bson_iter_t *iter)
+bson_iter_to_binary(bson_iter_t *iter, int uuid_subtype)
 {
     bson_subtype_t binary_subtype;
     uint32_t binary_len;
@@ -186,7 +214,7 @@ bson_iter_to_binary(bson_iter_t *iter)
         if (binary_len != 16)
             goto done;
 
-        ret = bson_data_to_uuid(binary_data);
+        ret = bson_data_to_uuid(binary_data, uuid_subtype);
         if (!ret)
             goto done;
     }
@@ -212,6 +240,61 @@ bson_iter_to_binary(bson_iter_t *iter)
     }
 
 done:
+    return ret;
+}
+
+/*
+ * Decode an ObjectId, or return NULL and set exception.
+ */
+static PyObject *
+bson_iter_to_objectid(bson_iter_t *iter)
+{
+    PyObject *ret = NULL;
+    PyObject *objectid_module = NULL;
+    PyObject *objectid_class = NULL;
+    PyObject *args = NULL;
+    const bson_oid_t *oid;
+    PyObject *oid_bytes = NULL;
+
+
+    /*
+     * TODO: use libbson's ObjectId instead of ours.
+     */
+    objectid_module = PyImport_ImportModule("bson.objectid");
+    if (!objectid_module)
+        goto done;
+
+    objectid_class = PyObject_GetAttrString(objectid_module, "ObjectId");
+    if (!objectid_class)
+        goto done;
+
+    oid = bson_iter_oid(iter);
+    if (!oid)
+        goto done;
+
+
+#if PY_MAJOR_VERSION >= 3
+    oid_bytes = PyBytes_FromStringAndSize((const char *)oid->bytes, 12);
+#else
+    oid_bytes = PyString_FromStringAndSize((const char *)oid->bytes, 12);
+#endif
+
+    args = PyTuple_New(1);
+    if (!args)
+        goto done;
+
+    PyTuple_SET_ITEM(args, 0, oid_bytes);
+    /* args has stolen reference to oid_bytes. */
+    oid_bytes = NULL;
+
+    ret = PyObject_Call(objectid_class, args, NULL);
+
+done:
+    Py_XDECREF(objectid_module);
+    Py_XDECREF(objectid_class);
+    Py_XDECREF(oid_bytes);
+    Py_XDECREF(args);
+
     return ret;
 }
 
@@ -296,7 +379,10 @@ bson_iter_py_value(bson_iter_t *iter, PyBSONBuffer *buffer)
         }
         break;
     case BSON_TYPE_BINARY:
-        ret = bson_iter_to_binary(iter);
+        ret = bson_iter_to_binary(iter, buffer->uuid_subtype);
+        break;
+    case BSON_TYPE_OID:
+        ret = bson_iter_to_objectid(iter);
         break;
     case BSON_TYPE_INT32:
         ret = PyInt_FromLong(bson_iter_int32(iter));

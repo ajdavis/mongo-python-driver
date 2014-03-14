@@ -25,8 +25,10 @@ typedef struct {
     struct PyBSONDocument *dependents;
     /* A bytearray. */
     PyObject *array;
-    bson_reader_t *reader;
-    int valid;
+    PyObject *as_class;
+    int tz_aware;
+    int uuid_subtype;
+    int compile_re;
 } PyBSONBuffer;
 
 void
@@ -41,7 +43,8 @@ PyBSONBuffer_IterNext(PyBSONBuffer *buffer);
  * For C users.
  */
 PyBSONBuffer *
-bson_buffer_new(PyObject *data);
+bson_buffer_new(PyObject *data, PyObject *as_class, int tz_aware,
+                int uuid_subtype, int compile_re);
 
 /*
  * Add BSONBuffer and related functions to module.

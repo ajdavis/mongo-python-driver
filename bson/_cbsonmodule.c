@@ -2204,9 +2204,6 @@ static PyObject* _cbson_bson_to_dict(PyObject* self, PyObject* args) {
     PyObject *doc = NULL;
     PyObject *remainder = NULL;
 
-    /*
-     * TODO: use these.
-     */
     PyObject* as_class = (PyObject*)&PyDict_Type;
     unsigned char tz_aware = 1;
     unsigned char uuid_subtype = 3;
@@ -2218,7 +2215,9 @@ static PyObject* _cbson_bson_to_dict(PyObject* self, PyObject* args) {
         goto error;
     }
 
-    buffer = bson_buffer_new(bson);
+    buffer = bson_buffer_new(bson, as_class, tz_aware, uuid_subtype,
+                             compile_re);
+
     if (!buffer)
         goto error;
 
@@ -2264,7 +2263,8 @@ _cbson_decode_all(PyObject* self, PyObject* args) {
         return NULL;
     }
 
-    return (PyObject *)bson_buffer_new(bson);
+    return (PyObject *)bson_buffer_new(bson, as_class, tz_aware, uuid_subtype,
+                                       compile_re);
 }
 
 static PyMethodDef _CBSONMethods[] = {

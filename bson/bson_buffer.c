@@ -106,10 +106,11 @@ error:
  * or set exception and return false.
  */
 static int
-bson_buffer_init(PyBSONBuffer *buffer, PyObject *data)
+bson_buffer_init(PyBSONBuffer *buffer, PyObject *data, PyObject *as_class,
+                 int tz_aware, int uuid_subtype, int compile_re)
 {
     /*
-     * TODO: Does this have to be a separate allocation from the BSONBuffer?
+     * TODO: as_class.
      */
     bson_reader_t *reader = NULL;
     size_t buffer_size;
@@ -128,9 +129,8 @@ bson_buffer_init(PyBSONBuffer *buffer, PyObject *data)
     }
 
     buffer_size = PyByteArray_Size(array);
-    reader = bson_reader_new_from_data(
-            (uint8_t *)PyByteArray_AsString(array),
-            buffer_size);
+    reader = bson_reader_new_from_data((uint8_t *)PyByteArray_AsString(array),
+                                       buffer_size);
 
     if (!reader)
         goto error;
@@ -138,6 +138,11 @@ bson_buffer_init(PyBSONBuffer *buffer, PyObject *data)
     buffer->array = array;
     buffer->reader = reader;
     buffer->dependents = NULL;
+    buffer->as_class = as_class;
+    Py_XINCREF(as_class);
+    buffer->tz_aware = tz_aware;
+    buffer->uuid_subtype = uuid_subtype;
+    buffer->compile_re = compile_re;
     buffer->valid = 1;
     return 1;
 
@@ -156,11 +161,23 @@ error:
 static int
 bson_buffer_initproc(PyBSONBuffer *self, PyObject *args, PyObject *kwds)
 {
+    /*
+     * TODO: refactor arg parsing with _cbson_bson_to_dict().
+     */
     PyObject *data = NULL;
-    if (!PyArg_ParseTuple(args, "O", &data))
-        goto error;
+    PyObject* as_class = (PyObject*)&PyDict_Type;
+    unsigned char tz_aware = 1;
+    unsigned char uuid_subtype = 3;
+    unsigned char compile_re = 1;
 
-    if (!bson_buffer_init(self, data))
+    if (!PyArg_ParseTuple(
+            args, "O|Obbb",
+            &data, &as_class, &tz_aware, &uuid_subtype, &compile_re)) {
+        goto error;
+    }
+
+    if (!bson_buffer_init(self, data, as_class, tz_aware, uuid_subtype,
+                          compile_re))
         goto error;
 
     return 0;
@@ -235,13 +252,15 @@ static PyTypeObject PyBSONBuffer_Type = {
 };
 
 PyBSONBuffer *
-bson_buffer_new(PyObject *data)
+bson_buffer_new(PyObject *data, PyObject *as_class, int tz_aware,
+                int uuid_subtype, int compile_re)
 {
     PyBSONBuffer *buffer = PyObject_New(PyBSONBuffer, &PyBSONBuffer_Type);
     if (!buffer)
         goto error;
 
-    if (!bson_buffer_init(buffer, data))
+    if (!bson_buffer_init(buffer, data, as_class, tz_aware, uuid_subtype,
+                          compile_re))
         goto error;
 
     return buffer;
