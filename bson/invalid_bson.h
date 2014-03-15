@@ -19,11 +19,19 @@
 #define INVALID_BSON_H
 
 /*
+ * Set the current exception to InvalidBSON, optionally with a value.
+ * value can be NULL.
+ * Call this before returning NULL from a BSON decoder function.
+ */
+void
+raise_invalid_bson_object(PyObject *value);
+
+/*
  * Set the current exception to InvalidBSON, optionally with a message.
  * msg can be NULL.
  * Call this before returning NULL from a BSON decoder function.
  */
 void
-raise_invalid_bson(const char *msg);
+raise_invalid_bson_str(const char *msg);
 
 #endif /* INVALID_BSON_H */

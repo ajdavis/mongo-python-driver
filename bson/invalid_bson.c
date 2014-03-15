@@ -19,20 +19,31 @@
 #include "invalid_bson.h"
 
 void
-raise_invalid_bson(const char *msg)
+raise_invalid_bson_object(PyObject *value)
 {
-    PyObject* InvalidBSON;
+    PyObject* InvalidBSON = NULL;
     PyObject* errors = PyImport_ImportModule("bson.errors");
     if (!errors)
-        return;
+        goto done;
     InvalidBSON = PyObject_GetAttrString(errors, "InvalidBSON");
-    Py_DECREF(errors);
     if (!InvalidBSON)
-        return;
+        goto done;
 
-    PyErr_SetString(
-            InvalidBSON,
-            msg ? msg : "Buffer contained invalid BSON.");
+    if (value) {
+        PyErr_SetObject(InvalidBSON, value);
+    } else {
+        PyErr_SetString(InvalidBSON, "Buffer contained invalid BSON.");
+    }
 
-    Py_DECREF(InvalidBSON);
+done:
+    Py_XDECREF(InvalidBSON);
+    Py_XDECREF(errors);
+}
+
+void
+raise_invalid_bson_str(const char *msg)
+{
+    PyObject *value = msg ? PyString_FromString(msg) : NULL;
+    raise_invalid_bson_object(value);
+    Py_XDECREF(value);
 }

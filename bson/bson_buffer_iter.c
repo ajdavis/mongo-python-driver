@@ -32,7 +32,7 @@ PyBSONBufferIter_IterNext(PyBSONBufferIter *iter) {
     bson_reader_t *reader = iter->reader;
 
     if (!iter->valid) {
-        raise_invalid_bson("Buffer contains invalid BSON");
+        raise_invalid_bson_str("Buffer contains invalid BSON");
         goto error;
     }
     if (!reader) {
@@ -60,7 +60,7 @@ PyBSONBufferIter_IterNext(PyBSONBufferIter *iter) {
             PyErr_SetNone(PyExc_StopIteration);
             return NULL;
         } else {
-            raise_invalid_bson("Buffer contains invalid BSON");
+            raise_invalid_bson_str("Buffer contains invalid BSON");
             goto error;
         }
     }

@@ -201,7 +201,7 @@ bson_iter_to_binary(bson_iter_t *iter, int uuid_subtype)
         &binary_data);
 
     if (!binary_data) {
-        raise_invalid_bson("Invalid BSON binary object");
+        raise_invalid_bson_str("Invalid BSON binary object");
         goto done;
     }
 
@@ -321,7 +321,7 @@ bson_iter_py_value(bson_iter_t *iter, PyBSONBuffer *buffer)
 
            utf8 = bson_iter_utf8(iter, &utf8_len);
            if (!bson_utf8_validate(utf8, utf8_len, 1)) {
-               raise_invalid_bson("Invalid UTF8 string");
+               raise_invalid_bson_str("Invalid UTF8 string");
                goto done;
            }
            ret = PyString_FromString(utf8);
@@ -336,7 +336,7 @@ bson_iter_py_value(bson_iter_t *iter, PyBSONBuffer *buffer)
 
             bson_iter_t child_iter;
             if (!bson_iter_recurse(iter, &child_iter)) {
-                raise_invalid_bson("Invalid subdocument");
+                raise_invalid_bson_str("Invalid subdocument");
                 goto done;
             }
 
@@ -359,7 +359,7 @@ bson_iter_py_value(bson_iter_t *iter, PyBSONBuffer *buffer)
              */
             bson_iter_t child_iter;
             if (!bson_iter_recurse(iter, &child_iter)) {
-                raise_invalid_bson("Invalid array");
+                raise_invalid_bson_str("Invalid array");
                 goto done;
             }
             ret = PyList_New(0);
@@ -391,8 +391,13 @@ bson_iter_py_value(bson_iter_t *iter, PyBSONBuffer *buffer)
         ret = PyLong_FromLongLong(bson_iter_int64(iter));
         break;
     default:
-        raise_invalid_bson("Unrecognized BSON type");
-        goto done;
+        {
+            PyObject *msg = PyString_FromFormat("Unrecognized BSON type: %d",
+                                                bson_iter_type(iter));
+            raise_invalid_bson_object(msg);
+            Py_XDECREF(msg);
+        }
+        break;
     }
 
 done:

@@ -296,7 +296,7 @@ PyBSONDocument_Keys(PyObject *self, PyObject *args)
     while (bson_iter_next(&bson_and_iter.iter)) {
         key = bson_iter_key(&bson_and_iter.iter);
         if (!key) {
-            raise_invalid_bson("Invalid key.");
+            raise_invalid_bson_str("Invalid key.");
             goto error;
         }
         py_key = PyString_FromString(key);
