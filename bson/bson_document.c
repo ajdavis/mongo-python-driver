@@ -219,6 +219,7 @@ bson_doc_get(PyBSONDocument *doc, PyObject *args)
         if (!val)
             val = failobj;
 
+        Py_INCREF(val);
         goto done;
     } else {
         cstring_key = PyString_AsString(key);
@@ -234,6 +235,7 @@ bson_doc_get(PyBSONDocument *doc, PyObject *args)
          */
         if (!bson_iter_find(&bson_and_iter.iter, cstring_key)) {
             val = failobj;
+            Py_INCREF(val);
             goto done;
         }
 
@@ -241,7 +243,6 @@ bson_doc_get(PyBSONDocument *doc, PyObject *args)
     }
 
 done:
-    Py_XINCREF(val);
     return val;
 }
 

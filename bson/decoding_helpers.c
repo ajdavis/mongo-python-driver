@@ -299,7 +299,8 @@ done:
 }
 
 /*
- * Decode the value at the current position, or set exception and return NULL.
+ * Decode the value at the current position.
+ * Return new reference, or set exception and return NULL.
  */
 PyObject *
 bson_iter_py_value(bson_iter_t *iter, PyBSONBuffer *buffer)
