@@ -384,6 +384,20 @@ bson_iter_py_value(bson_iter_t *iter, PyBSONBuffer *buffer)
     case BSON_TYPE_OID:
         ret = bson_iter_to_objectid(iter);
         break;
+    case BSON_TYPE_BOOL:
+        ret = bson_iter_bool(iter) ? Py_True : Py_False;
+        Py_INCREF(ret);
+        break;
+    case BSON_TYPE_DATE_TIME:
+        /*
+         * TODO: datetime
+         */
+        ret = PyInt_FromLong(17);
+        break;
+    case BSON_TYPE_NULL:
+        ret = Py_None;
+        Py_INCREF(ret);
+        break;
     case BSON_TYPE_INT32:
         ret = PyInt_FromLong(bson_iter_int32(iter));
         break;
