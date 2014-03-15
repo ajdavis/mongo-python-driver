@@ -50,6 +50,7 @@ class TestBSONDocument(unittest.TestCase):
         doc['recurse'] = doc
         expected_repr = '{%r: %r, %r: {...}}' % ('oof', 1, 'recurse')
         self.assertEqual(expected_repr, repr(doc))
+        self.assertEqual(expected_repr, str(doc))
 
         self.assertEqual('{}', repr(BSONDocument()))
 
