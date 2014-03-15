@@ -526,6 +526,66 @@ static PyMappingMethods bson_doc_as_mapping = {
     (objobjargproc)PyBSONDocument_AssignSubscript, /* mp_ass_subscript */
 };
 
+/*
+ * Return 1 if key is in doc, 0 if not, or set exception and return -1.
+ */
+static int
+PyBSONDocument_Contains(PyBSONDocument *doc, PyObject *key)
+{
+    /* Assume error. */
+    int ret = -1;
+
+    /* TODO: refactor */
+    if (!IS_INFLATED(doc)) {
+        ++doc->n_accesses;
+        if (SHOULD_INFLATE(doc)) {
+            if (!bson_doc_detach(doc))
+                goto done;
+        }
+    }
+
+    if (IS_INFLATED(doc)) {
+        ret = PyDict_Contains((PyObject *)doc, key);
+        goto done;
+    } else {
+        bson_and_iter_t bson_and_iter;
+        const char *cstring_key = PyString_AsString(key);
+        if (!cstring_key)
+            goto done;
+
+        if (!bson_doc_iter_init(doc, &bson_and_iter)) {
+            raise_invalid_bson_str(NULL);
+            goto done;
+        }
+
+        /*
+         * TODO: we could use bson_iter_find_with_len if it were public.
+         */
+        ret = bson_iter_find(&bson_and_iter.iter, cstring_key);
+        goto done;
+    }
+
+done:
+    return ret;
+}
+
+/*
+ * Hack to implement "key in document".
+ * Copied from dictobject.c.
+ */
+static PySequenceMethods document_as_sequence = {
+    0,                          /* sq_length */
+    0,                          /* sq_concat */
+    0,                          /* sq_repeat */
+    0,                          /* sq_item */
+    0,                          /* sq_slice */
+    0,                          /* sq_ass_item */
+    0,                          /* sq_ass_slice */
+    (objobjproc)PyBSONDocument_Contains, /* sq_contains */
+    0,                          /* sq_inplace_concat */
+    0,                          /* sq_inplace_repeat */
+};
+
 static void
 bson_doc_dealloc(PyBSONDocument* doc)
 {
@@ -567,7 +627,7 @@ static PyTypeObject PyBSONDocument_Type = {
     0,                       /* tp_compare */
     (reprfunc)bson_doc_repr, /* tp_repr */
     0,                       /* tp_as_number */
-    0,                       /* tp_as_sequence */
+    &document_as_sequence,   /* tp_as_sequence */
     &bson_doc_as_mapping,    /* tp_as_mapping */
     0,                       /* tp_hash */
     0,                       /* tp_call */
