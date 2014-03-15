@@ -1305,6 +1305,9 @@ int write_dict(PyObject* self, buffer_t buffer,
     int length;
     int length_location;
 
+    /*
+     * TODO: If this is an uninflated BSONDocument just copy it out.
+     */
     if (!PyDict_Check(dict)) {
         PyObject* repr = PyObject_Repr(dict);
         if (repr) {
