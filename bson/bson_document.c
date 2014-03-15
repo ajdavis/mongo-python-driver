@@ -353,6 +353,7 @@ bson_doc_repr(PyBSONDocument *doc)
     while ((pair = PyIter_Next(iter))) {
         int status;
 
+        /* Borrowed references. */
         key = PyTuple_GetItem(pair, 0);
         if (!key)
             goto done;
@@ -361,15 +362,9 @@ bson_doc_repr(PyBSONDocument *doc)
         if (!value)
             goto done;
 
-        /*
-         * Prevent repr from deleting value during key format.
-         * (This precaution is copied from Python's dict_repr.)
-         */
-        Py_INCREF(value);
         s = PyObject_Repr(key);
         PyString_Concat(&s, colon);
         PyString_ConcatAndDel(&s, PyObject_Repr(value));
-        Py_DECREF(value);
         if (!s)
             goto done;
 
@@ -377,9 +372,6 @@ bson_doc_repr(PyBSONDocument *doc)
         Py_CLEAR(s);
         if (status < 0)
             goto done;
-
-        Py_CLEAR(key);
-        Py_CLEAR(value);
     }
 
     /*
@@ -429,8 +421,6 @@ done:
     Py_XDECREF(colon);
     Py_XDECREF(pieces);
     Py_XDECREF(pair);
-    Py_XDECREF(key);
-    Py_XDECREF(value);
     Py_ReprLeave((PyObject *)doc);
     return result;
 }
