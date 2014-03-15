@@ -662,7 +662,9 @@ class MongoClient(common.BaseObject):
             raise
 
         end = time.time()
-        response = helpers._unpack_response(response)['data'][0]
+        bson_buffer = helpers._unpack_response(response)['data']
+        response = next(iter(bson_buffer))
+        repr(response)
         msg = "command %r failed: %%s" % spec
         helpers._check_command_response(response, None, msg)
         return response, end - start
@@ -1009,7 +1011,7 @@ class MongoClient(common.BaseObject):
         response = helpers._unpack_response(response)
 
         assert response["number_returned"] == 1
-        result = response["data"][0]
+        result = next(iter(response['data']))
 
         helpers._check_command_response(result, self.disconnect)
 
