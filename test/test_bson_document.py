@@ -57,19 +57,41 @@ class TestBSONDocument(unittest.TestCase):
 
         self.assertEqual('{}', repr(BSONDocument()))
 
+    def test_iterkeys(self):
+        buf = self.get_std_buf()
+        doc = next(iter(buf))
+
+        # Explicit iterator.
+        iterkeys = doc.iterkeys()
+        self.assertTrue('BSONDocument key iterator' in str(iterkeys))
+        self.assertEqual(['foo', 'oof'], list(iterkeys))
+
+        # Implicit.
+        self.assertTrue('BSONDocument key iterator' in str(iter(doc)))
+        self.assertEqual(['foo', 'oof'], list(doc))
+        self.assertFalse(doc.inflated())
+
     def test_iteritems(self):
         buf = self.get_std_buf()
         doc = next(iter(buf))
+
+        # Uninflated iteration.
         iteritems = doc.iteritems()
-        self.assertTrue('BSONDocument iterator' in str(iteritems))
+        self.assertTrue('BSONDocument item iterator' in str(iteritems))
 
-        item0 = next(iteritems)
-        self.assertEqual(('foo', 'bar'), item0)
+        self.assertEqual(
+            [('foo', 'bar'), ('oof', 1)],
+            list(iteritems))
 
-        item1 = next(iteritems)
-        self.assertEqual(('oof', 1), item1)
+        self.assertFalse(doc.inflated())
+        doc.inflate()
 
-        self.assertRaises(StopIteration, next, iteritems)
+        # Inflated iteration: same order, slightly different implementation.
+        iteritems = doc.iteritems()
+        self.assertTrue('BSONDocument item iterator' in str(iteritems))
+        self.assertEqual(
+            [('foo', 'bar'), ('oof', 1)],
+            list(iteritems))
 
     def test_empty(self):
         bson_bytes = BSON.encode(SON([]))

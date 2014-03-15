@@ -51,6 +51,131 @@ bson_doc_iter_dealloc(bson_doc_iterobject *iter)
 }
 
 /*
+ * Get the next key from an uninflated PyBSONDocument's iterkeys(),
+ * or set exception and return NULL.
+ */
+static PyObject *
+bson_iter_nextkey_uninflated(bson_doc_iterobject *iter)
+{
+    PyObject *key;
+    bson_and_iter_t *bson_and_iter;
+    PyBSONDocument *doc = iter->doc;
+    bson_and_iter = &iter->bson_and_iter;
+
+    assert(iter);
+    assert(doc);
+    assert(doc->buffer);
+
+    if (!bson_iter_next(&bson_and_iter->iter)) {
+        /*
+         * Completed.
+         */
+        Py_CLEAR(iter->doc);
+        PyErr_SetNone(PyExc_StopIteration);
+        return NULL;
+    }
+
+    key = PyString_FromString(bson_iter_key(&bson_and_iter->iter));
+    if (key) {
+        ++iter->current_pos;
+        return key;
+    }
+
+    return NULL;
+}
+
+/*
+ * Get the next key from an inflated PyBSONDocument's iterkeys(),
+ * or set exception and return NULL.
+ */
+static PyObject *
+bson_iter_nextkey_inflated(bson_doc_iterobject *iter)
+{
+    PyObject *key = NULL;
+    PyBSONDocument *doc;
+    Py_ssize_t size;
+
+    assert(iter);
+    assert(iter->doc);
+    doc = iter->doc;
+    size = doc->keys ? PyList_Size(doc->keys) : 0;
+    if (iter->current_pos >= size) {
+        /*
+         * Completed.
+         */
+        Py_CLEAR(iter->doc);
+        PyErr_SetNone(PyExc_StopIteration);
+        return NULL;
+    }
+
+    key = PyList_GetItem(doc->keys, iter->current_pos);
+    if (key) {
+        Py_INCREF(key);
+        ++iter->current_pos;
+        return key;
+    }
+
+    return NULL;
+}
+
+/*
+ * Get the next key from a PyBSONDocument's iterkeys().
+ * iter's type is BSONDocumentIterKey_Type.
+ */
+static PyObject *
+PyBSONDocIter_NextKey(bson_doc_iterobject *iter)
+{
+    PyBSONDocument *doc;
+
+    assert(iter);
+
+    doc = iter->doc;
+    if (doc && IS_INFLATED(doc)) {
+        return bson_iter_nextkey_inflated(iter);
+    } else if (doc) {
+        return bson_iter_nextkey_uninflated(iter);
+    } else {
+        /*
+         * Completed: doc is null;
+         */
+        PyErr_SetNone(PyExc_StopIteration);
+        return NULL;
+    }
+}
+
+PyTypeObject PyBSONDocumentIterKey_Type = {
+    PyVarObject_HEAD_INIT(&PyType_Type, 0)
+    "PyBSONDocument key iterator",              /* tp_name */
+    sizeof(bson_doc_iterobject),                /* tp_basicsize */
+    0,                                          /* tp_itemsize */
+    (destructor)bson_doc_iter_dealloc,          /* tp_dealloc */
+    0,                                          /* tp_print */
+    0,                                          /* tp_getattr */
+    0,                                          /* tp_setattr */
+    0,                                          /* tp_compare */
+    0,                                          /* tp_repr */
+    0,                                          /* tp_as_number */
+    0,                                          /* tp_as_sequence */
+    0,                                          /* tp_as_mapping */
+    0,                                          /* tp_hash */
+    0,                                          /* tp_call */
+    0,                                          /* tp_str */
+    PyObject_GenericGetAttr,                    /* tp_getattro */
+    0,                                          /* tp_setattro */
+    0,                                          /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,                         /* tp_flags */
+    0,                                          /* tp_doc */
+    0,                                          /* tp_traverse */
+    0,                                          /* tp_clear */
+    0,                                          /* tp_richcompare */
+    0,                                          /* tp_weaklistoffset */
+    PyObject_SelfIter,                          /* tp_iter */
+    (iternextfunc)PyBSONDocIter_NextKey,        /* tp_iternext */
+    0,                                          /* tp_methods */
+    0,                                          /* tp_members */
+};
+
+/*
  * Get the next item from an uninflated PyBSONDocument's iteritems(),
  * or set exception and return NULL.
  */
@@ -187,7 +312,7 @@ PyBSONDocIter_NextItem(bson_doc_iterobject *iter)
 
 PyTypeObject PyBSONDocumentIterItem_Type = {
     PyVarObject_HEAD_INIT(&PyType_Type, 0)
-    "PyBSONDocument iterator",                  /* tp_name */
+    "PyBSONDocument item iterator",             /* tp_name */
     sizeof(bson_doc_iterobject),                /* tp_basicsize */
     0,                                          /* tp_itemsize */
     (destructor)bson_doc_iter_dealloc,          /* tp_dealloc */
@@ -245,20 +370,7 @@ error:
 PyObject *
 PyBSONDocument_IterKeys(PyBSONDocument *doc)
 {
-    PyObject *keys = NULL;
-    /*
-     * TODO: custom iterator, more like PyBSONDocument_IterItems.
-     */
-    if (!bson_doc_inflate(doc))
-        return NULL;
-
-//    return PyDict_Type.tp_iter((PyObject *)&doc->dict);
-
-    keys = PyDict_Keys((PyObject*)&doc->dict);
-    if (!keys)
-        return NULL;
-
-    return PyObject_GetIter(keys);
+    return (PyObject *)bson_doc_iter_new(doc, &PyBSONDocumentIterKey_Type);
 }
 
 PyObject *
@@ -270,5 +382,8 @@ PyBSONDocument_IterItems(PyBSONDocument *doc)
 int
 init_bson_document_iter(PyObject *module)
 {
+    if (PyType_Ready(&PyBSONDocumentIterKey_Type) < 0)
+        return -1;
+
     return PyType_Ready(&PyBSONDocumentIterItem_Type);
 }
