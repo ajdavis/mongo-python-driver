@@ -17,20 +17,20 @@
 #ifndef BSON_DOCUMENT_ITER_H
 #define BSON_DOCUMENT_ITER_H
 
-#include "bson_document.h"
+struct PyBSONDocument; /* Forward declaration. */
 
 /*
- * TODO: iterkeys and itervalues.
+ * TODO: itervalues.
  */
 
-//PyObject *
-//PyBSONDocument_IterKeys(PyBSONDocument *doc);
-//
+PyObject *
+PyBSONDocument_IterKeys(struct PyBSONDocument *doc);
+
 //PyObject *
 //PyBSONDocument_IterValues(PyBSONDocument *doc);
 
 PyObject *
-PyBSONDocument_IterItems(PyBSONDocument *doc);
+PyBSONDocument_IterItems(struct PyBSONDocument *doc);
 
 int
 init_bson_document_iter(PyObject *module);

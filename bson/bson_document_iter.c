@@ -242,9 +242,24 @@ error:
     return NULL;
 }
 
-/*
- * TODO: iterkeys and itervalues.
- */
+PyObject *
+PyBSONDocument_IterKeys(PyBSONDocument *doc)
+{
+    PyObject *keys = NULL;
+    /*
+     * TODO: custom iterator, more like PyBSONDocument_IterItems.
+     */
+    if (!bson_doc_inflate(doc))
+        return NULL;
+
+//    return PyDict_Type.tp_iter((PyObject *)&doc->dict);
+
+    keys = PyDict_Keys((PyObject*)&doc->dict);
+    if (!keys)
+        return NULL;
+
+    return PyObject_GetIter(keys);
+}
 
 PyObject *
 PyBSONDocument_IterItems(PyBSONDocument *doc)

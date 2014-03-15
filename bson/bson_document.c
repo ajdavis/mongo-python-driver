@@ -505,8 +505,7 @@ static PyMethodDef BSONDocument_methods[] = {
 //     clear__doc__},
 //    {"copy",            (PyCFunction)bson_doc_copy,         METH_NOARGS,
 //     copy__doc__},
-//    {"iterkeys",        (PyCFunction)bson_doc_iterkeys,     METH_NOARGS,
-//     iterkeys__doc__},
+    {"iterkeys",        (PyCFunction)PyBSONDocument_IterKeys, METH_NOARGS },
 //    {"itervalues",      (PyCFunction)bson_doc_itervalues,   METH_NOARGS,
 //     itervalues__doc__},
     {"iteritems",       (PyCFunction)PyBSONDocument_IterItems, METH_NOARGS,
@@ -584,7 +583,7 @@ static PyTypeObject PyBSONDocument_Type = {
     0,                       /* tp_clear */
     0,                       /* tp_richcompare */
     0,                       /* tp_weaklistoffset */
-    0,                       /* tp_iter */
+    (getiterfunc)PyBSONDocument_IterKeys, /* tp_iter */
     0,                       /* tp_iternext */
     BSONDocument_methods,    /* tp_methods */
     0,                       /* tp_members */
