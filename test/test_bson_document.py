@@ -37,9 +37,12 @@ class TestBSONDocument(unittest.TestCase):
         if not BSONBuffer:
             raise SkipTest("_cbson not compiled")
 
-    def test_repr(self):
+    def get_std_buf(self):
         array = bytearray(BSON.encode(SON([('foo', 'bar'), ('oof', 1)])))
-        buf = BSONBuffer(array)
+        return BSONBuffer(array)
+
+    def test_repr(self):
+        buf = self.get_std_buf()
         doc = next(iter(buf))
         expected_repr = '{%r: %r, %r: %r}' % ('foo', 'bar', 'oof', 1)
         self.assertEqual(expected_repr, repr(doc))
@@ -55,8 +58,7 @@ class TestBSONDocument(unittest.TestCase):
         self.assertEqual('{}', repr(BSONDocument()))
 
     def test_iteritems(self):
-        array = bytearray(BSON.encode(SON([('foo', 'bar'), ('oof', 1)])))
-        buf = BSONBuffer(array)
+        buf = self.get_std_buf()
         doc = next(iter(buf))
         iteritems = doc.iteritems()
         self.assertTrue('BSONDocument iterator' in str(iteritems))
@@ -117,11 +119,11 @@ class TestBSONDocument(unittest.TestCase):
         self.assertEqual(2 << 40, get_doc()['long'])
 
     def test_explicit_inflate(self):
-        buf = BSONBuffer(bytearray(BSON.encode({})))
-        doc0 = next(iter(buf))
-        self.assertFalse(doc0.inflated())
-        doc0.inflate()
-        self.assertTrue(doc0.inflated())
+        buf = self.get_std_buf()
+        doc = next(iter(buf))
+        self.assertFalse(doc.inflated())
+        doc.inflate()
+        self.assertTrue(doc.inflated())
 
     def test_inflate_before_modify(self):
         array = bytearray(BSON.encode({'foo': 'bar'}))
@@ -149,17 +151,16 @@ class TestBSONDocument(unittest.TestCase):
         self.assertEqual({}, doc)
 
     def test_inflate_after_accesses(self):
-        buf = BSONBuffer(bytearray(BSON.encode({'foo': 'bar'})))
-        doc0 = next(iter(buf))
-        self.assertFalse(doc0.inflated())
+        buf = self.get_std_buf()
+        doc = next(iter(buf))
+        self.assertFalse(doc.inflated())
         for _ in range(10):
-            doc0['foo']
+            doc['foo']
 
-        self.assertTrue(doc0.inflated())
+        self.assertTrue(doc.inflated())
 
     def test_iteritems_inflate(self):
-        array = bytearray(BSON.encode(SON([('foo', 'bar'), ('oof', 1)])))
-        buf = BSONBuffer(array)
+        buf = self.get_std_buf()
         doc = next(iter(buf))
         iteritems = doc.iteritems()
         self.assertEqual(('foo', 'bar'), next(iteritems))
