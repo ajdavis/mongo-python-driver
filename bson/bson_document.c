@@ -202,6 +202,49 @@ error:
     return NULL;
 }
 
+static PyObject *
+bson_doc_get(PyBSONDocument *doc, PyObject *args)
+{
+    PyObject *key;
+    PyObject *failobj = Py_None;
+    PyObject *val = NULL;
+    const char *cstring_key;
+    bson_and_iter_t bson_and_iter;
+
+    if (!PyArg_UnpackTuple(args, "get", 1, 2, &key, &failobj))
+        goto done;
+
+    if (IS_INFLATED(doc)) {
+        val = PyDict_GetItem((PyObject *)doc, key);
+        if (!val)
+            val = failobj;
+
+        goto done;
+    } else {
+        cstring_key = PyString_AsString(key);
+        if (!cstring_key)
+            goto done;
+
+        if (!bson_doc_iter_init(doc, &bson_and_iter)) {
+            raise_invalid_bson_str(NULL);
+            goto done;
+        }
+        /*
+         * TODO: we could use bson_iter_find_with_len if it were public.
+         */
+        if (!bson_iter_find(&bson_and_iter.iter, cstring_key)) {
+            val = failobj;
+            goto done;
+        }
+
+        val = bson_iter_py_value(&bson_and_iter.iter, doc->buffer);
+    }
+
+done:
+    Py_XINCREF(val);
+    return val;
+}
+
 /*
  * Return index or -1.
  */
@@ -456,6 +499,8 @@ PyBSONDocument_Inflated(PyBSONDocument *doc)
 
 PyDoc_STRVAR(getitem__doc__,
              "x.__getitem__(y) <==> x[y]");
+PyDoc_STRVAR(get__doc__,
+             "D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None.");
 PyDoc_STRVAR(keys__doc__,
              "D.keys() -> list of D's keys");
 PyDoc_STRVAR(iteritems__doc__,
@@ -477,8 +522,8 @@ static PyMethodDef BSONDocument_methods[] = {
 //     sizeof__doc__},
 //    {"has_key",         (PyCFunction)bson_doc_has_key,      METH_O,
 //     has_key__doc__},
-//    {"get",             (PyCFunction)bson_doc_get,          METH_VARARGS,
-//     get__doc__},
+    {"get",             (PyCFunction)bson_doc_get,          METH_VARARGS,
+     get__doc__},
 //    {"setdefault",      (PyCFunction)bson_doc_setdefault,   METH_VARARGS,
 //     setdefault_doc__},
 //    {"pop",             (PyCFunction)bson_doc_pop,          METH_VARARGS,
