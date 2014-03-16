@@ -359,6 +359,40 @@ error:
     return NULL;
 }
 
+static PyObject *
+PyBSONDocument_Items(PyBSONDocument *doc)
+{
+    PyObject *ret = NULL;
+    PyObject *i = NULL;
+    PyObject *iter = PyBSONDocument_IterItems(doc);
+    if (!iter)
+        goto done;
+
+    ret = PyList_New(0);
+    if (!ret)
+        goto done;
+
+    while ((i = PyIter_Next(iter))) {
+        if (PyList_Append(ret, i) < 0) {
+            Py_CLEAR(ret);
+            goto done;
+        }
+
+        Py_DECREF(i);
+    }
+
+    /*
+     * Is i NULL because we finished iteration, or an error?
+     */
+    if (PyErr_Occurred())
+        Py_CLEAR(ret);
+
+done:
+    Py_XDECREF(iter);
+    Py_XDECREF(i);
+    return ret;
+}
+
 /*
  * Adapted from dict_repr().
  */
@@ -504,6 +538,8 @@ PyDoc_STRVAR(get__doc__,
              "D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None.");
 PyDoc_STRVAR(keys__doc__,
              "D.keys() -> list of D's keys");
+PyDoc_STRVAR(items__doc__,
+             "D.items() -> list of D's (key, value) pairs");
 PyDoc_STRVAR(iteritems__doc__,
              "D.iteritems() -> an iterator over the (key, value) items of D");
 PyDoc_STRVAR(inflate__doc__,
@@ -533,8 +569,8 @@ static PyMethodDef BSONDocument_methods[] = {
 //     popitem__doc__},
     {"keys",            (PyCFunction)PyBSONDocument_Keys, METH_NOARGS,
      keys__doc__},
-//    {"items",           (PyCFunction)bson_doc_items,        METH_NOARGS,
-//     items__doc__},
+    {"items",           (PyCFunction)PyBSONDocument_Items, METH_NOARGS,
+     items__doc__},
 //    {"values",          (PyCFunction)bson_doc_values,       METH_NOARGS,
 //     values__doc__},
 //    {"viewkeys",        (PyCFunction)dictkeys_new,      METH_NOARGS,
