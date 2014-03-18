@@ -41,6 +41,10 @@ class TestBSONDocument(unittest.TestCase):
         array = bytearray(BSON.encode(SON([('foo', 'bar'), ('oof', 1)])))
         return BSONBuffer(array)
 
+    def test_basic(self):
+        self.assertEqual({}, BSONDocument())
+        self.assertTrue(isinstance(BSONDocument(), dict))
+
     def test_repr(self):
         buf = self.get_std_buf()
         doc = next(iter(buf))
