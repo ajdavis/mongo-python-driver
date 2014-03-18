@@ -37,10 +37,7 @@ typedef struct PyBSONDocument {
     PyDictObject dict;
     /* Buffer from which we're reading. Not reference-counted. */
     PyBSONBuffer *buffer;
-    /* This document's offset into array. */
-    off_t offset;
-    /* This document's length. */
-    int length;
+    bson_t bson;
     /* How many times were we accessed before inflating? */
     char n_accesses;
     /* Neighbors in list of documents, all pointing to the same buffer. */

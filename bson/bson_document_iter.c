@@ -38,7 +38,7 @@ typedef struct {
     PyBSONDocument *doc;
     /* Index into doc->keys. */
     Py_ssize_t current_pos;
-    bson_and_iter_t bson_and_iter;
+    bson_iter_t bson_iter;
 } bson_doc_iterobject;
 
 static void
@@ -58,15 +58,12 @@ static PyObject *
 bson_iter_nextkey_uninflated(bson_doc_iterobject *iter)
 {
     PyObject *key;
-    bson_and_iter_t *bson_and_iter;
-    PyBSONDocument *doc = iter->doc;
-    bson_and_iter = &iter->bson_and_iter;
 
     assert(iter);
-    assert(doc);
-    assert(doc->buffer);
+    assert(iter->doc);
+    assert(iter->doc->buffer);
 
-    if (!bson_iter_next(&bson_and_iter->iter)) {
+    if (!bson_iter_next(&iter->bson_iter)) {
         /*
          * Completed.
          */
@@ -75,7 +72,7 @@ bson_iter_nextkey_uninflated(bson_doc_iterobject *iter)
         return NULL;
     }
 
-    key = PyString_FromString(bson_iter_key(&bson_and_iter->iter));
+    key = PyString_FromString(bson_iter_key(&iter->bson_iter));
     if (key) {
         ++iter->current_pos;
         return key;
@@ -185,15 +182,13 @@ bson_iter_nextitem_uninflated(bson_doc_iterobject *iter)
     PyObject *key = NULL;
     PyObject *value = NULL;
     PyObject *result = NULL;
-    bson_and_iter_t *bson_and_iter;
     PyBSONDocument *doc = iter->doc;
-    bson_and_iter = &iter->bson_and_iter;
 
     assert(iter);
     assert(doc);
     assert(doc->buffer);
 
-    if (!bson_iter_next(&bson_and_iter->iter)) {
+    if (!bson_iter_next(&iter->bson_iter)) {
         /*
          * Completed.
          */
@@ -202,11 +197,11 @@ bson_iter_nextitem_uninflated(bson_doc_iterobject *iter)
         return NULL;
     }
 
-    key = PyString_FromString(bson_iter_key(&bson_and_iter->iter));
+    key = PyString_FromString(bson_iter_key(&iter->bson_iter));
     if (!key)
         goto error;
 
-    value = bson_iter_py_value(&bson_and_iter->iter, doc->buffer);
+    value = bson_iter_py_value(&iter->bson_iter, doc->buffer);
     if (!value)
         goto error;
 
@@ -356,7 +351,7 @@ bson_doc_iter_new(PyBSONDocument *doc, PyTypeObject *itertype)
     iter->current_pos = 0;
 
     if (!IS_INFLATED(doc)) {
-        if (!bson_doc_iter_init(doc, &iter->bson_and_iter))
+        if (!bson_iter_init(&iter->bson_iter, &doc->bson))
             goto error;
     }
 

@@ -48,7 +48,7 @@ bson_doc_inflate(PyBSONDocument *doc)
 {
     PyObject *key = NULL;
     PyObject *value = NULL;
-    bson_and_iter_t bson_and_iter;
+    bson_iter_t bson_iter;
     if (IS_INFLATED(doc))
         return 1;
 
@@ -57,11 +57,11 @@ bson_doc_inflate(PyBSONDocument *doc)
     if (!doc->keys)
         goto error;
 
-    if (!bson_doc_iter_init(doc, &bson_and_iter))
+    if (!bson_iter_init(&bson_iter, &doc->bson))
         goto error;
 
-    while (bson_iter_next(&bson_and_iter.iter)) {
-        const char *ckey = bson_iter_key(&bson_and_iter.iter);
+    while (bson_iter_next(&bson_iter)) {
+        const char *ckey = bson_iter_key(&bson_iter);
         if (!ckey) {
             PyErr_SetString(PyExc_RuntimeError,
                             "Internal error in bson_doc_inflate.");
@@ -74,7 +74,7 @@ bson_doc_inflate(PyBSONDocument *doc)
             goto error;
         }
 
-        value = bson_iter_py_value(&bson_and_iter.iter, doc->buffer);
+        value = bson_iter_py_value(&bson_iter, doc->buffer);
         if (!value)
             /* Exception is already set. */
             goto error;
@@ -119,7 +119,7 @@ static Py_ssize_t
 PyBSONDocument_Size(PyBSONDocument *doc)
 {
     Py_ssize_t ret = 0;
-    bson_and_iter_t bson_and_iter;
+    bson_iter_t bson_iter;
     if (!IS_INFLATED(doc)) {
         ++doc->n_accesses;
         if (SHOULD_INFLATE(doc)) {
@@ -131,10 +131,10 @@ PyBSONDocument_Size(PyBSONDocument *doc)
     if (IS_INFLATED(doc))
         return PyDict_Size((PyObject *)doc);
 
-    if (!bson_doc_iter_init(doc, &bson_and_iter))
+    if (!bson_iter_init(&bson_iter, &doc->bson))
         goto error;
 
-    while (bson_iter_next(&bson_and_iter.iter)) ++ret;
+    while (bson_iter_next(&bson_iter)) ++ret;
     return ret;
 
 error:
@@ -142,12 +142,11 @@ error:
 }
 
 static PyObject *
-PyBSONDocument_Subscript(PyObject *self, PyObject *key)
+PyBSONDocument_Subscript(PyBSONDocument *doc, PyObject *key)
 {
-    PyBSONDocument *doc = (PyBSONDocument *)self;
     PyObject *ret = NULL;
-    bson_and_iter_t bson_and_iter;
     const char *cstring_key = NULL;
+    bson_iter_t bson_iter;
 
     if (!IS_INFLATED(doc)) {
         ++doc->n_accesses;
@@ -174,24 +173,23 @@ PyBSONDocument_Subscript(PyObject *self, PyObject *key)
 
     cstring_key = PyString_AsString(key);
     if (!cstring_key) {
+        raise_invalid_bson_str(NULL);
         goto error;
     }
-    if (!bson_doc_iter_init(doc, &bson_and_iter)) {
-        /*
-         * TODO: Raise InvalidBSON. Refactor error-raising code from
-         * _cbsonmodule.c and bson_buffer.c first.
-         */
+
+    if (!bson_iter_init(&bson_iter, &doc->bson)) {
+        raise_invalid_bson_str(NULL);
         goto error;
     }
     /*
      * TODO: we could use bson_iter_find_with_len if it were public.
      */
-    if (!bson_iter_find(&bson_and_iter.iter, cstring_key)) {
+    if (!bson_iter_find(&bson_iter, cstring_key)) {
         PyErr_SetObject(PyExc_KeyError, key);
         goto error;
     }
 
-    ret = bson_iter_py_value(&bson_and_iter.iter, doc->buffer);
+    ret = bson_iter_py_value(&bson_iter, doc->buffer);
     if (!ret)
         goto error;
 
@@ -209,7 +207,7 @@ bson_doc_get(PyBSONDocument *doc, PyObject *args)
     PyObject *failobj = Py_None;
     PyObject *val = NULL;
     const char *cstring_key;
-    bson_and_iter_t bson_and_iter;
+    bson_iter_t bson_iter;
 
     if (!PyArg_UnpackTuple(args, "get", 1, 2, &key, &failobj))
         goto done;
@@ -226,20 +224,20 @@ bson_doc_get(PyBSONDocument *doc, PyObject *args)
         if (!cstring_key)
             goto done;
 
-        if (!bson_doc_iter_init(doc, &bson_and_iter)) {
+        if (!bson_iter_init(&bson_iter, &doc->bson)) {
             raise_invalid_bson_str(NULL);
             goto done;
         }
         /*
          * TODO: we could use bson_iter_find_with_len if it were public.
          */
-        if (!bson_iter_find(&bson_and_iter.iter, cstring_key)) {
+        if (!bson_iter_find(&bson_iter, cstring_key)) {
             val = failobj;
             Py_INCREF(val);
             goto done;
         }
 
-        val = bson_iter_py_value(&bson_and_iter.iter, doc->buffer);
+        val = bson_iter_py_value(&bson_iter, doc->buffer);
     }
 
 done:
@@ -311,11 +309,10 @@ PyBSONDocument_AssignSubscript(PyBSONDocument *doc, PyObject *v, PyObject *w)
 }
 
 static PyObject *
-PyBSONDocument_Keys(PyObject *self, PyObject *args)
+PyBSONDocument_Keys(PyBSONDocument *doc)
 {
-    PyBSONDocument *doc = (PyBSONDocument *)self;
     PyObject *py_key = NULL;
-    bson_and_iter_t bson_and_iter;
+    bson_iter_t bson_iter;
     const char *key;
     PyObject *ret = NULL;
 
@@ -327,18 +324,20 @@ PyBSONDocument_Keys(PyObject *self, PyObject *args)
         }
     }
 
-    if (IS_INFLATED(doc))
-        return PyDict_Keys((PyObject *)doc);
+    if (IS_INFLATED(doc)) {
+        assert(doc->keys);
+        return doc->keys;
+    }
 
     ret = PyList_New(0);
     if (!ret)
         goto error;
 
-    if (!bson_doc_iter_init(doc, &bson_and_iter))
+    if (!bson_iter_init(&bson_iter, &doc->bson))
         goto error;
 
-    while (bson_iter_next(&bson_and_iter.iter)) {
-        key = bson_iter_key(&bson_and_iter.iter);
+    while (bson_iter_next(&bson_iter)) {
+        key = bson_iter_key(&bson_iter);
         if (!key) {
             raise_invalid_bson_str("Invalid key.");
             goto error;
@@ -630,12 +629,12 @@ PyBSONDocument_Contains(PyBSONDocument *doc, PyObject *key)
         ret = PyDict_Contains((PyObject *)doc, key);
         goto done;
     } else {
-        bson_and_iter_t bson_and_iter;
+        bson_iter_t bson_iter;
         const char *cstring_key = PyString_AsString(key);
         if (!cstring_key)
             goto done;
 
-        if (!bson_doc_iter_init(doc, &bson_and_iter)) {
+        if (!bson_iter_init(&bson_iter, &doc->bson)) {
             raise_invalid_bson_str(NULL);
             goto done;
         }
@@ -643,7 +642,7 @@ PyBSONDocument_Contains(PyBSONDocument *doc, PyObject *key)
         /*
          * TODO: we could use bson_iter_find_with_len if it were public.
          */
-        ret = bson_iter_find(&bson_and_iter.iter, cstring_key);
+        ret = bson_iter_find(&bson_iter, cstring_key);
         goto done;
     }
 
@@ -690,8 +689,6 @@ bson_doc_init(PyBSONDocument *doc, PyObject *args, PyObject *kwds)
         return -1;
     }
     doc->buffer = NULL;
-    doc->offset = 0;
-    doc->length = 0;
     doc->n_accesses = 0;
     return 0;
 }
@@ -746,38 +743,50 @@ static PyTypeObject PyBSONDocument_Type = {
 PyBSONDocument *
 PyBSONDocument_New(PyBSONBuffer *buffer, off_t start, off_t end)
 {
-    PyBSONDocument *doc;
+    PyBSONDocument *doc = NULL;
     PyObject *init_args = NULL;
+    const char *buffer_ptr;
 
     /*
      * TODO: cache.
      */
     init_args = PyTuple_New(0);
     if (!init_args)
-        return NULL;
+        goto error;
 
     /*
      * PyType_GenericNew seems unable to create a dict or a subclass of it.
      * TODO: Why? I'm confused about the relationship of this and
-     *       PyBSONDocument_init.
+     *       bson_doc_init.
      */
     doc = (PyBSONDocument*)PyObject_Call(
         (PyObject *)&PyBSONDocument_Type, init_args, NULL);
 
-    Py_DECREF(init_args);
-
+    Py_CLEAR(init_args);
     if (!doc)
-        return NULL;
+        goto error;
 
     /* Buffer is not reference-counted. */
     doc->buffer = buffer;
+    buffer_ptr = PyByteArray_AsString(buffer->array);
+    if (!buffer_ptr)
+        goto error;
+
     doc->keys = NULL;
-    doc->offset = start;
     /*
      * TODO: check for overflow.
      */
-    doc->length = end - start;
+    if (!bson_init_static(&doc->bson, buffer_ptr + start, end - start)) {
+        raise_invalid_bson_str(NULL);
+        goto error;
+    }
+
     return doc;
+
+error:
+    Py_XDECREF(init_args);
+    Py_XDECREF(doc);
+    return NULL;
 }
 
 int
