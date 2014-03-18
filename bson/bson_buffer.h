@@ -26,6 +26,9 @@ typedef struct PyBSONBuffer {
     /* A bytearray. */
     PyObject *array;
     PyObject *as_class;
+    /*
+     * TODO: tz_aware and compile_re are going away?
+     */
     int tz_aware;
     int uuid_subtype;
     int compile_re;
