@@ -25,36 +25,6 @@
 #define CSHARP_LEGACY 6
 
 /*
- * Initialize a bson_t and bson_iter_t, or set exception and return 0.
- */
-int
-bson_doc_iter_init(PyBSONDocument *doc, bson_and_iter_t *bson_and_iter)
-{
-    if (!doc->buffer)
-        goto error;
-
-    uint8_t *buffer_ptr =
-            (uint8_t *)PyByteArray_AsString(doc->buffer->array)
-            + doc->offset;
-
-    if (!bson_init_static(
-            &bson_and_iter->bson,
-            buffer_ptr,
-            doc->length))
-        goto error;
-
-    if (!bson_iter_init(&bson_and_iter->iter, &bson_and_iter->bson))
-        goto error;
-
-    return 1;
-
-error:
-    PyErr_SetString(PyExc_RuntimeError,
-                    "Internal error in bson_doc_iter_init.");
-    return 0;
-}
-
-/*
  * Return bytes (Python 3) or str (Python 2), or set exception and return NULL.
  */
 static PyObject *
@@ -390,8 +360,9 @@ bson_iter_py_value(bson_iter_t *iter, PyBSONBuffer *buffer)
         Py_INCREF(ret);
         break;
     case BSON_TYPE_DATE_TIME:
+    case BSON_TYPE_TIMESTAMP:
         /*
-         * TODO: datetime
+         * TODO: datetime, timestamp
          */
         ret = PyInt_FromLong(17);
         break;
