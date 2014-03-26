@@ -20,10 +20,10 @@ import uuid
 
 from nose.plugins.skip import SkipTest
 
-from bson import SON, BSON, Binary, ObjectId
-from bson.py3compat import b
-
 sys.path[0:0] = [""]
+
+from bson import SON, BSON, Binary, ObjectId
+from bson.py3compat import b, text_type
 
 try:
     from bson._cbson import BSONBuffer, BSONDocument
