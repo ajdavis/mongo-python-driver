@@ -43,16 +43,8 @@ bson_doc_key_index(PyBSONDocument *doc, PyObject *key)
 
     for (i = 0; i < size; ++i) {
         PyObject *current = PyList_GET_ITEM(keys, i);
-        if (key_len == PyUnicode_GET_SIZE(current)) {
-            /*
-             * Shortcut, since we know 'key' and 'current' are unicode objects.
-             */
-            if (!memcmp(PyUnicode_AS_DATA(key),
-                        PyUnicode_AS_DATA(current),
-                        key_len)) {
-                return i;
-            }
-        }
+        if (0 == PyUnicode_Compare(current, key))
+            return i;
     }
 
     return -1;
