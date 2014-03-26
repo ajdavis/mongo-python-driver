@@ -51,71 +51,6 @@ bson_doc_iter_dealloc(bson_doc_iterobject *iter)
 }
 
 /*
- * Get the next key from an uninflated PyBSONDocument's iterkeys(),
- * or set exception and return NULL.
- */
-static PyObject *
-bson_iter_nextkey_uninflated(bson_doc_iterobject *iter)
-{
-    PyObject *key;
-
-    assert(iter);
-    assert(iter->doc);
-    assert(iter->doc->buffer);
-
-    if (!bson_iter_next(&iter->bson_iter)) {
-        /*
-         * Completed.
-         */
-        Py_CLEAR(iter->doc);
-        PyErr_SetNone(PyExc_StopIteration);
-        return NULL;
-    }
-
-    key = PyString_FromString(bson_iter_key(&iter->bson_iter));
-    if (key) {
-        ++iter->current_pos;
-        return key;
-    }
-
-    return NULL;
-}
-
-/*
- * Get the next key from an inflated PyBSONDocument's iterkeys(),
- * or set exception and return NULL.
- */
-static PyObject *
-bson_iter_nextkey_inflated(bson_doc_iterobject *iter)
-{
-    PyObject *key = NULL;
-    PyBSONDocument *doc;
-    Py_ssize_t size;
-
-    assert(iter);
-    assert(iter->doc);
-    doc = iter->doc;
-    size = doc->keys ? PyList_Size(doc->keys) : 0;
-    if (iter->current_pos >= size) {
-        /*
-         * Completed.
-         */
-        Py_CLEAR(iter->doc);
-        PyErr_SetNone(PyExc_StopIteration);
-        return NULL;
-    }
-
-    key = PyList_GetItem(doc->keys, iter->current_pos);
-    if (key) {
-        Py_INCREF(key);
-        ++iter->current_pos;
-        return key;
-    }
-
-    return NULL;
-}
-
-/*
  * Get the next key from a PyBSONDocument's iterkeys().
  * iter's type is BSONDocumentIterKey_Type.
  */
@@ -125,12 +60,32 @@ PyBSONDocIter_NextKey(bson_doc_iterobject *iter)
     PyBSONDocument *doc;
 
     assert(iter);
-
     doc = iter->doc;
-    if (doc && IS_INFLATED(doc)) {
-        return bson_iter_nextkey_inflated(iter);
-    } else if (doc) {
-        return bson_iter_nextkey_uninflated(iter);
+
+    if (doc) {
+        Py_ssize_t size;
+        PyObject *key = NULL;
+
+        assert(doc->keys);
+
+        size = PyList_Size(doc->keys);
+
+        if (iter->current_pos >= size) {
+            /*
+             * Completed.
+             */
+            Py_CLEAR(iter->doc);
+            PyErr_SetNone(PyExc_StopIteration);
+            return NULL;
+        }
+
+        key = PyList_GetItem(doc->keys, iter->current_pos);
+        if (!key)
+            return NULL; /* Error. */
+
+        Py_INCREF(key);
+        ++iter->current_pos;
+        return key;
     } else {
         /*
          * Completed: doc is null;
@@ -197,9 +152,11 @@ bson_iter_nextitem_uninflated(bson_doc_iterobject *iter)
         return NULL;
     }
 
-    key = PyString_FromString(bson_iter_key(&iter->bson_iter));
+    key = PyList_GetItem(doc->keys, iter->current_pos);
     if (!key)
         goto error;
+
+    Py_INCREF(key);
 
     value = bson_iter_py_value(&iter->bson_iter, doc->buffer);
     if (!value)

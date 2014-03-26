@@ -26,6 +26,39 @@
 #define SHOULD_INFLATE(doc) (doc->n_accesses >= 10)
 
 /*
+ * Look for 'key', a unicode object. Return index or -1.
+ */
+static Py_ssize_t
+bson_doc_key_index(PyBSONDocument *doc, PyObject *key)
+{
+    PyObject *keys = doc->keys;
+    Py_ssize_t size = PyList_Size(keys);
+    Py_ssize_t key_len;
+    Py_ssize_t i;
+
+    assert(keys);
+    assert(key);
+    assert(PyUnicode_CheckExact(key));
+    key_len = PyUnicode_GET_SIZE(key);
+
+    for (i = 0; i < size; ++i) {
+        PyObject *current = PyList_GET_ITEM(keys, i);
+        if (key_len == PyUnicode_GET_SIZE(current)) {
+            /*
+             * Shortcut, since we know 'key' and 'current' are unicode objects.
+             */
+            if (!memcmp(PyUnicode_AS_DATA(key),
+                        PyUnicode_AS_DATA(current),
+                        key_len)) {
+                return i;
+            }
+        }
+    }
+
+    return -1;
+}
+
+/*
  * Detach doc from buffer.
  */
 void
@@ -49,25 +82,15 @@ bson_doc_inflate(PyBSONDocument *doc)
     PyObject *key = NULL;
     PyObject *value = NULL;
     bson_iter_t bson_iter;
+    int i = 0;
     if (IS_INFLATED(doc))
         return 1;
-
-    assert(!doc->keys);
-    doc->keys = PyList_New(0);
-    if (!doc->keys)
-        goto error;
 
     if (!bson_iter_init(&bson_iter, &doc->bson))
         goto error;
 
     while (bson_iter_next(&bson_iter)) {
-        const char *ckey = bson_iter_key(&bson_iter);
-        if (!ckey) {
-            PyErr_SetString(PyExc_RuntimeError,
-                            "Internal error in bson_doc_inflate.");
-            goto error;
-        }
-        key = PyString_FromString(ckey);
+        key = PyList_GetItem(doc->keys, i);
         if (!key) {
             PyErr_SetString(PyExc_RuntimeError,
                             "Internal error in bson_doc_inflate.");
@@ -82,12 +105,8 @@ bson_doc_inflate(PyBSONDocument *doc)
         if (PyDict_SetItem((PyObject *)doc, key, value) < 0)
             goto error;
 
-        /* Remember key order. */
-        if (PyList_Append(doc->keys, key) < 0)
-            goto error;
-
-        Py_CLEAR(key);
         Py_CLEAR(value);
+        ++i;
     }
 
     bson_doc_detach_buffer(doc);
@@ -96,7 +115,6 @@ bson_doc_inflate(PyBSONDocument *doc)
 error:
     PyDict_Clear((PyObject *)doc);
     Py_CLEAR(doc->keys);
-    Py_XDECREF(key);
     Py_XDECREF(value);
     return 0;
 }
@@ -113,6 +131,48 @@ bson_doc_detach(PyBSONDocument *doc)
     /* Not reference-counted. */
     doc->buffer = NULL;
     return 1;
+}
+
+/*
+ * Fills out doc->keys and doc->elem_offsets, or set exception and return 0.
+ */
+int
+bson_doc_read_keys(PyBSONDocument *doc)
+{
+    PyObject *key = NULL;
+    bson_iter_t bson_iter;
+    int i = 0;
+
+    assert(doc->keys);
+    assert(0 == PyList_GET_SIZE(doc->keys));
+
+    if (!bson_iter_init(&bson_iter, &doc->bson))
+        goto error;
+
+    while (bson_iter_next(&bson_iter)) {
+        const char *ckey = bson_iter_key(&bson_iter);
+        size_t key_length = strlen(ckey);
+        key = PyUnicode_DecodeUTF8(ckey, key_length, "strict");
+        if (!key) {
+            raise_invalid_bson_str("Invalid UTF-8 in field name");
+            goto error;
+        }
+
+        if (PyList_Append(doc->keys, key) < 0)
+            goto error;
+
+        Py_CLEAR(key);
+        doc->elem_offsets[i] = bson_iter.off;
+        ++i;
+    }
+
+    return 1;
+
+error:
+    PyDict_Clear((PyObject *)doc);
+    Py_CLEAR(doc->keys);
+    Py_XDECREF(key);
+    return 0;
 }
 
 static Py_ssize_t
@@ -145,14 +205,18 @@ static PyObject *
 PyBSONDocument_Subscript(PyBSONDocument *doc, PyObject *key)
 {
     PyObject *ret = NULL;
-    const char *cstring_key = NULL;
+    PyObject *unicode_key = NULL;
     bson_iter_t bson_iter;
+    Py_ssize_t index;
 
+    /*
+     * Check key is a string-like thing.
+     */
     if (!IS_INFLATED(doc)) {
         ++doc->n_accesses;
         if (SHOULD_INFLATE(doc)) {
             if (!bson_doc_detach(doc))
-                goto error;
+                goto done;
         }
     }
 
@@ -161,7 +225,7 @@ PyBSONDocument_Subscript(PyBSONDocument *doc, PyObject *key)
         if (!ret) {
             /* PyDict_GetItem doesn't set exception. */
             PyErr_SetObject(PyExc_KeyError, key);
-            goto error;
+            goto done;
         }
 
         /*
@@ -171,43 +235,40 @@ PyBSONDocument_Subscript(PyBSONDocument *doc, PyObject *key)
         return ret;
     }
 
-    cstring_key = PyString_AsString(key);
-    if (!cstring_key) {
-        raise_invalid_bson_str(NULL);
-        goto error;
+    unicode_key = PyUnicode_FromObject(key);
+    if (!unicode_key)
+        goto done;
+
+    index = bson_doc_key_index(doc, unicode_key);
+    if (index < 0) {
+        PyErr_SetObject(PyExc_KeyError, unicode_key);
+        goto done;
     }
 
     if (!bson_iter_init(&bson_iter, &doc->bson)) {
         raise_invalid_bson_str(NULL);
-        goto error;
+        goto done;
     }
+
     /*
-     * TODO: we could use bson_iter_find_with_len if it were public.
+     * TODO: hack!! This needs a public API in libbson.
      */
-    if (!bson_iter_find(&bson_iter, cstring_key)) {
-        PyErr_SetObject(PyExc_KeyError, key);
-        goto error;
-    }
-
+    bson_iter.next_off = doc->elem_offsets[index];
+    bson_iter_next(&bson_iter);
     ret = bson_iter_py_value(&bson_iter, doc->buffer);
-    if (!ret)
-        goto error;
 
+done:
+    Py_XDECREF(unicode_key);
     return ret;
-
-error:
-    Py_XDECREF(ret);
-    return NULL;
 }
 
 static PyObject *
 bson_doc_get(PyBSONDocument *doc, PyObject *args)
 {
-    PyObject *key;
+    PyObject *key = NULL;
     PyObject *failobj = Py_None;
     PyObject *val = NULL;
-    const char *cstring_key;
-    bson_iter_t bson_iter;
+    PyObject *unicode_key = NULL;
 
     if (!PyArg_UnpackTuple(args, "get", 1, 2, &key, &failobj))
         goto done;
@@ -220,92 +281,85 @@ bson_doc_get(PyBSONDocument *doc, PyObject *args)
         Py_INCREF(val);
         goto done;
     } else {
-        cstring_key = PyString_AsString(key);
+        int index;
+        bson_iter_t bson_iter;
+        const char *cstring_key = PyString_AsString(key);
         if (!cstring_key)
             goto done;
 
-        if (!bson_iter_init(&bson_iter, &doc->bson)) {
-            raise_invalid_bson_str(NULL);
+        unicode_key = PyUnicode_FromObject(key);
+        if (!unicode_key)
             goto done;
-        }
-        /*
-         * TODO: we could use bson_iter_find_with_len if it were public.
-         */
-        if (!bson_iter_find(&bson_iter, cstring_key)) {
+
+        index = bson_doc_key_index(doc, unicode_key);
+        if (index < 0) {
             val = failobj;
             Py_INCREF(val);
             goto done;
         }
 
+        if (!bson_iter_init(&bson_iter, &doc->bson)) {
+            raise_invalid_bson_str(NULL);
+            goto done;
+        }
+
+        /*
+         * TODO: hack!! This needs a public API in libbson.
+         */
+        bson_iter.next_off = doc->elem_offsets[index];
+        bson_iter_next(&bson_iter);
         val = bson_iter_py_value(&bson_iter, doc->buffer);
     }
 
 done:
+    Py_XDECREF(unicode_key);
     return val;
-}
-
-/*
- * Return index or -1.
- */
-static Py_ssize_t
-list_find(PyObject *list, PyObject *item)
-{
-    Py_ssize_t size = PyList_Size(list);
-    Py_ssize_t i;
-
-    assert(list);
-    assert(item);
-
-    for (i = 0; i < size; ++i) {
-        PyObject *current = PyList_GetItem(list, i);
-        if (!current)
-            /* Huh? */
-            return -1;
-
-        /*
-         * TODO: Is this the best way to compare? Matches dict semantics?
-         */
-        if (PyObject_RichCompareBool(item, current, Py_EQ))
-            return i;
-    }
-
-    return -1;
 }
 
 static int
 PyBSONDocument_AssignSubscript(PyBSONDocument *doc, PyObject *v, PyObject *w)
 {
+    int ret = -1;
+    PyObject *unicode_key = NULL;
     if (!bson_doc_detach(doc))
-        return -1;
+        goto done;
+
+    unicode_key = PyUnicode_FromObject(v);
+    if (!unicode_key)
+        goto done;
 
     if (w) {
         /*
          * Put this key last.
          */
-        if (PyList_Append(doc->keys, v) < 0)
-            return -1;
+        if (PyList_Append(doc->keys, unicode_key) < 0)
+            goto done;
 
-        return PyDict_SetItem((PyObject *)doc, v, w);
+        ret = PyDict_SetItem((PyObject *)doc, unicode_key, w);
     } else {
         /*
          * w is NULL: del document['field'].
          */
-        Py_ssize_t index = list_find(doc->keys, v);
+        Py_ssize_t index = bson_doc_key_index(doc, unicode_key);
         if (index < 0) {
-            PyErr_SetObject(PyExc_KeyError, v);
-            return -1;
+            PyErr_SetObject(PyExc_KeyError, unicode_key);
+            goto done;
         }
 
-        if (PyDict_DelItem((PyObject *)doc, v) < 0)
-            return -1;
+        if (PyDict_DelItem((PyObject *)doc, unicode_key) < 0)
+            goto done;
 
         /*
          * Remove from list of keys. Failure is unexpected and very bad, since
          * we've already modified the dict.
          */
         assert(index < PyList_Size(doc->keys));
-        return PyList_SetSlice(doc->keys, index, index + 1, NULL);
+        ret = PyList_SetSlice(doc->keys, index, index + 1, NULL);
     }
+
+done:
+    Py_XDECREF(unicode_key);
+    return ret;
 }
 
 static PyObject *
@@ -772,7 +826,10 @@ PyBSONDocument_New(PyBSONBuffer *buffer, off_t start, off_t end)
     if (!buffer_ptr)
         goto error;
 
-    doc->keys = NULL;
+    doc->keys = PyList_New(0);
+    if (!doc->keys)
+        goto error;
+
     /*
      * TODO: check for overflow.
      */
@@ -780,6 +837,10 @@ PyBSONDocument_New(PyBSONBuffer *buffer, off_t start, off_t end)
         raise_invalid_bson_str(NULL);
         goto error;
     }
+
+
+    if (!bson_doc_read_keys(doc))
+        goto error;
 
     return doc;
 

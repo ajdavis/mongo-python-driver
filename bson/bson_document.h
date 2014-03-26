@@ -24,9 +24,11 @@
 #define IS_INFLATED(doc) (!doc->buffer)
 
 /*
- * When first created, a document is a pointer into the BSON buffer. If it
- * is inflated (either from frequent lookups by key, or because the buffer
- * is deallocated), it fills out the dict and dereferences the buffer.
+ * When first created, a document is a pointer into the BSON buffer. It has
+ * a list of elements' offsets and their keys, but the values aren't
+ * decoded until needed. If it is inflated (either from frequent lookups by
+ * key, or because the buffer is deallocated), it fills out the dict and
+ * dereferences the buffer.
  *
  * All documents for a single buffer are stored in a doubly-linked list so
  * they can be notified when the buffer is being deallocated. Their position
@@ -44,6 +46,11 @@ typedef struct PyBSONDocument {
     struct PyBSONDocument *prev, *next;
     /* Preserve key order after we inflate. */
     PyObject *keys;
+    /* Start of each BSON element. */
+    /*
+     * TODO: dynamic!
+     */
+    int elem_offsets[30];
 } PyBSONDocument;
 
 /*
