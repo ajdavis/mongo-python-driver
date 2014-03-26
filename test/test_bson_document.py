@@ -113,6 +113,16 @@ class TestBSONDocument(unittest.TestCase):
         self.assertEqual(1, doc['a'])
         self.assertEqual([('a', 1)], list(doc.iteritems()))
 
+    def test_get(self):
+        bson_bytes = BSON.encode(SON([]))
+        array = bytearray(bson_bytes)
+        buf = BSONBuffer(array)
+        doc = next(iter(buf))
+        self.assertEqual(None, doc.get('key'))
+        self.assertEqual('default', doc.get('key', 'default'))
+        doc['key'] = 1
+        self.assertEqual(1, doc.get('key'))
+
     def test_types(self):
         my_id = ObjectId()
         my_binary = Binary(b('foo'), subtype=2)  # Random subtype.
