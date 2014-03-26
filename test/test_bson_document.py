@@ -48,14 +48,18 @@ class TestBSONDocument(unittest.TestCase):
     def test_repr(self):
         buf = self.get_std_buf()
         doc = next(iter(buf))
-        expected_repr = '{%r: %r, %r: %r}' % ('foo', 'bar', 'oof', 1)
+        expected_repr = '{%r: %r, %r: %r}' % (
+            text_type('foo'), text_type('bar'), text_type('oof'), 1)
+
         self.assertEqual(expected_repr, repr(doc))
         doc.inflate()
         self.assertEqual(expected_repr, repr(doc))
 
         del doc['foo']
-        doc['recurse'] = doc
-        expected_repr = '{%r: %r, %r: {...}}' % ('oof', 1, 'recurse')
+        doc[text_type('recurse')] = doc
+        expected_repr = '{%r: %r, %r: {...}}' % (
+            text_type('oof'), 1, text_type('recurse'))
+
         self.assertEqual(expected_repr, repr(doc))
         self.assertEqual(expected_repr, str(doc))
 
