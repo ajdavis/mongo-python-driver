@@ -23,7 +23,7 @@ sys.path[0:0] = [""]
 from nose.plugins.skip import SkipTest
 
 from bson import BSON, SON, EMPTY, InvalidBSON
-from bson.py3compat import b
+from bson.py3compat import b, text_type
 
 try:
     from bson._cbson import BSONBuffer
@@ -62,7 +62,7 @@ class TestBSONBuffer(unittest.TestCase):
         try:
             doc0['not-here']
         except KeyError, e:
-            self.assertEqual("'not-here'", str(e))
+            self.assertEqual("u'not-here'", str(e))
         else:
             self.fail('Expected KeyError')
 
