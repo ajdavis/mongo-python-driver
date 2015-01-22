@@ -1757,6 +1757,7 @@ class TestCollection(IntegrationTest):
         else:
             big_string = 'x' * (max_bson_size - 100)
         collection.drop()
+        collection = self.db.test_insert_large_batch2
         self.assertEqual(0, collection.count())
 
         # Batch insert that requires 2 batches
@@ -1769,11 +1770,13 @@ class TestCollection(IntegrationTest):
 
         # Test that inserts fail after first error.
         collection.drop()
+        collection = self.db.test_insert_large_batch3
         self.assertRaises(DuplicateKeyError, collection.insert, batch)
         self.assertEqual(1, collection.count())
 
         # 2 batches, 2nd insert fails, don't continue on error.
         collection.drop()
+        collection = self.db.test_insert_large_batch4
         self.assertTrue(collection.insert(batch, w=0))
         wait_until(lambda: 1 == collection.count(),
                    'insert 1 document')
@@ -1781,6 +1784,7 @@ class TestCollection(IntegrationTest):
         # 2 batches, ids of docs 0 and 1 are dupes, ids of docs 2 and 3 are
         # dupes. Acknowledged, continue on error.
         collection.drop()
+        collection = self.db.test_insert_large_batch5
         batch[3]['_id'] = batch[2]['_id']
         try:
             collection.insert(batch, continue_on_error=True, w=1)
@@ -1794,6 +1798,7 @@ class TestCollection(IntegrationTest):
 
         # 2 batches, 2 errors, unacknowledged, continue on error
         collection.drop()
+        collection = self.db.test_insert_large_batch6
         self.assertTrue(
             collection.insert(batch, continue_on_error=True, w=0))
         # Only the first and third documents should be inserted.
