@@ -1354,7 +1354,7 @@ class TestRawBSONCursor(IntegrationTest):
 
     def test_server_error(self):
         with self.assertRaises(OperationFailure) as exc:
-            next(self.db.test.find({'$bad': 1}, raw_batches=True))
+            next(self.db.test.find({'x': {'$bad': 1}}, raw_batches=True))
 
         # The server response was decoded, not left raw.
         self.assertIsInstance(exc.exception.details, dict)
