@@ -22,7 +22,7 @@ import sys
 
 sys.path[0:0] = [""]
 
-from bson import BSON, decode_all
+from bson import decode_all
 from bson.code import Code
 from bson.py3compat import PY3
 from bson.son import SON
@@ -32,10 +32,12 @@ from pymongo import (monitoring,
                      DESCENDING,
                      ALL,
                      OFF)
+from pymongo.collation import Collation
 from pymongo.cursor import CursorType
 from pymongo.errors import (InvalidOperation,
                             OperationFailure,
-                            ExecutionTimeout)
+                            ExecutionTimeout, ConfigurationError)
+from pymongo.read_concern import ReadConcern
 from test import (client_context,
                   SkipTest,
                   unittest,
@@ -1360,6 +1362,27 @@ class TestRawBSONCursor(IntegrationTest):
     def test_get_item(self):
         with self.assertRaises(InvalidOperation):
             self.db.test.find(raw_batches=True)[0]
+
+    @client_context.require_version_min(3, 4)
+    def test_collation(self):
+        next(self.db.test.find(collation=Collation('en_US'), raw_batches=True))
+
+    @client_context.require_version_max(3, 2)
+    def test_collation_error(self):
+        with self.assertRaises(ConfigurationError):
+            next(self.db.test.find(collation=Collation('en_US'),
+                                   raw_batches=True))
+
+    @client_context.require_version_min(3, 2)
+    def test_read_concern(self):
+        c = self.db.get_collection("test", read_concern=ReadConcern("majority"))
+        next(c.find(raw_batches=True))
+
+    @client_context.require_version_max(3, 1)
+    def test_read_concern_error(self):
+        c = self.db.get_collection("test", read_concern=ReadConcern("majority"))
+        with self.assertRaises(ConfigurationError):
+            next(c.find(raw_batches=True))
 
     def test_monitoring(self):
         listener = EventListener()

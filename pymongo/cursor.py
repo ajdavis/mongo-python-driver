@@ -1207,6 +1207,9 @@ class Cursor(object):
 
 class _RawQuery(_Query):
     def use_command(self, socket_info, exhaust):
+        # Compatibility checks.
+        super(_RawQuery, self).use_command(socket_info, exhaust)
+
         return False
 
     def get_message(self, set_slave_ok, is_mongos, use_cmd=False):
