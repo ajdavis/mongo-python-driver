@@ -1226,10 +1226,31 @@ class _RawGetMore(_GetMore):
 
 
 class RawBSONCursor(Cursor):
+    """A cursor / iterator over raw batches of BSON data from a query result."""
+
     _query_class = _RawQuery
     _getmore_class = _RawGetMore
 
     def __init__(self, *args, **kwargs):
+        """Create a new cursor / iterator over raw batches of BSON data.
+
+        Should not be called directly by application developers. Pass
+        ``raw_batches=True`` to :meth:`~pymongo.collection.Collection.find`
+        instead.
+
+        This example demonstrates how to work with raw batches, but in practice
+        raw batches should be passed to an external library that can decode
+        BSON into another data type, rather than used with PyMongo's
+        :mod:`bson` module.
+
+          >>> import bson
+          >>> cursor = db.test.find(raw_batches=True)
+          >>> for batch in cursor:
+          ...     print(bson.decode_all(batch))
+
+        .. mongodoc:: cursors
+
+        """
         if kwargs.get('manipulate'):
             raise InvalidOperation(
                 "Cannot use RawBSONCursor with manipulate=True")
@@ -1247,3 +1268,6 @@ class RawBSONCursor(Cursor):
         """
         clone = self._clone(deepcopy=True, base=Cursor(self.collection))
         return clone.explain()
+
+    def __getitem__(self, index):
+        raise InvalidOperation("Cannot call __getitem__ on RawBSONCursor")

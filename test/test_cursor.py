@@ -22,7 +22,7 @@ import sys
 
 sys.path[0:0] = [""]
 
-from bson import BSON
+from bson import BSON, decode_all
 from bson.code import Code
 from bson.py3compat import PY3
 from bson.son import SON
@@ -1323,11 +1323,10 @@ class TestRawBSONCursor(IntegrationTest):
         c = self.db.test
         c.drop()
         docs = [{'_id': i, 'x': 3.0 * i} for i in range(10)]
-        expected_raw = b''.join(BSON.encode(doc) for doc in docs)
         c.insert_many(docs)
         batches = list(c.find(raw_batches=True).sort('_id'))
         self.assertEqual(1, len(batches))
-        self.assertEqual(expected_raw, batches[0])
+        self.assertEqual(docs, decode_all(batches[0]))
 
     def test_explain(self):
         c = self.db.test
@@ -1349,8 +1348,7 @@ class TestRawBSONCursor(IntegrationTest):
         result = b''.join(
             c.find(raw_batches=True, cursor_type=CursorType.EXHAUST))
 
-        expected_raws = b''.join(BSON.encode({'_id': i}) for i in range(200))
-        self.assertEqual(expected_raws, result)
+        self.assertEqual([{'_id': i} for i in range(200)], decode_all(result))
 
     def test_server_error(self):
         with self.assertRaises(OperationFailure) as exc:
@@ -1359,17 +1357,19 @@ class TestRawBSONCursor(IntegrationTest):
         # The server response was decoded, not left raw.
         self.assertIsInstance(exc.exception.details, dict)
 
+    def test_get_item(self):
+        with self.assertRaises(InvalidOperation):
+            self.db.test.find(raw_batches=True)[0]
+
     def test_monitoring(self):
         listener = EventListener()
         client = rs_or_single_client(event_listeners=[listener])
         c = client.pymongo_test.test
         c.drop()
-        c.insert_many([{} for _ in range(10)])
+        c.insert_many([{'_id': i} for i in range(10)])
 
         listener.results.clear()
-        cursor = c.find(raw_batches=True,
-                        projection={'_id': False},
-                        batch_size=4)
+        cursor = c.find(raw_batches=True, batch_size=4)
 
         # First raw batch of 4 documents.
         next(cursor)
@@ -1385,7 +1385,8 @@ class TestRawBSONCursor(IntegrationTest):
 
         # The batch is a list of one raw bytes object.
         self.assertEqual(len(csr["firstBatch"]), 1)
-        self.assertIsInstance(csr["firstBatch"][0], bytes)
+        self.assertEqual(decode_all(csr["firstBatch"][0]),
+                         [{'_id': i} for i in range(0, 4)])
 
         listener.results.clear()
 
@@ -1402,7 +1403,8 @@ class TestRawBSONCursor(IntegrationTest):
             csr = succeeded.reply["cursor"]
             self.assertEqual(csr["ns"], "pymongo_test.test")
             self.assertEqual(len(csr["nextBatch"]), 1)
-            self.assertIsInstance(csr["nextBatch"][0], bytes)
+            self.assertEqual(decode_all(csr["nextBatch"][0]),
+                             [{'_id': i} for i in range(4, 8)])
         finally:
             # Finish the cursor.
             tuple(cursor)
