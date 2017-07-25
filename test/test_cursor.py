@@ -22,6 +22,7 @@ import sys
 
 sys.path[0:0] = [""]
 
+from bson import BSON
 from bson.code import Code
 from bson.py3compat import PY3
 from bson.son import SON
@@ -39,8 +40,10 @@ from test import (client_context,
                   SkipTest,
                   unittest,
                   IntegrationTest)
-from test.utils import (rs_or_single_client,
-                        WhiteListEventListener, ignore_deprecations)
+from test.utils import (EventListener,
+                        ignore_deprecations,
+                        rs_or_single_client,
+                        WhiteListEventListener)
 
 if PY3:
     long = int
@@ -1221,7 +1224,7 @@ class TestCursor(IntegrationTest):
 
     def test_modifiers(self):
         c = self.db.test
-        
+
         # "modifiers" is deprecated.
         with ignore_deprecations():
             cur = c.find()
@@ -1313,6 +1316,96 @@ class TestCursor(IntegrationTest):
         self.assertEqual("killCursors", results["started"][0].command_name)
         self.assertEqual(1, len(results["succeeded"]))
         self.assertEqual("killCursors", results["succeeded"][0].command_name)
+
+
+class TestRawBSONCursor(IntegrationTest):
+    def test_raw_batches(self):
+        c = self.db.test
+        c.drop()
+        docs = [{'_id': i, 'x': 3.0 * i} for i in range(10)]
+        expected_raw = b''.join(BSON.encode(doc) for doc in docs)
+        c.insert_many(docs)
+        batches = list(c.find(raw_batches=True).sort('_id'))
+        self.assertEqual(1, len(batches))
+        self.assertEqual(expected_raw, batches[0])
+
+    def test_explain(self):
+        c = self.db.test
+        c.insert_one({})
+        explanation = c.find(raw_batches=True).explain()
+        self.assertIsInstance(explanation, dict)
+
+    def test_clone(self):
+        cursor = self.db.test.find(raw_batches=True)
+        # Copy of a RawBSONCursor is also a RawBSONCursor, not a Cursor.
+        self.assertIsInstance(next(cursor.clone()), bytes)
+        self.assertIsInstance(next(copy.copy(cursor)), bytes)
+
+    @client_context.require_no_mongos
+    def test_exhaust(self):
+        c = self.db.test
+        c.drop()
+        c.insert_many({'_id': i} for i in range(200))
+        result = b''.join(
+            c.find(raw_batches=True, cursor_type=CursorType.EXHAUST))
+
+        expected_raws = b''.join(BSON.encode({'_id': i}) for i in range(200))
+        self.assertEqual(expected_raws, result)
+
+    def test_server_error(self):
+        with self.assertRaises(OperationFailure) as exc:
+            next(self.db.test.find({'$bad': 1}, raw_batches=True))
+
+        # The server response was decoded, not left raw.
+        self.assertIsInstance(exc.exception.details, dict)
+
+    def test_monitoring(self):
+        listener = EventListener()
+        client = rs_or_single_client(event_listeners=[listener])
+        c = client.pymongo_test.test
+        c.drop()
+        c.insert_many([{} for _ in range(10)])
+
+        listener.results.clear()
+        cursor = c.find(raw_batches=True,
+                        projection={'_id': False},
+                        batch_size=4)
+
+        # First raw batch of 4 documents.
+        next(cursor)
+
+        started = listener.results['started'][0]
+        succeeded = listener.results['succeeded'][0]
+        self.assertEqual(0, len(listener.results['failed']))
+        self.assertEqual('find', started.command_name)
+        self.assertEqual('pymongo_test', started.database_name)
+        self.assertEqual('find', succeeded.command_name)
+        csr = succeeded.reply["cursor"]
+        self.assertEqual(csr["ns"], "pymongo_test.test")
+
+        # The batch is a list of one raw bytes object.
+        self.assertEqual(len(csr["firstBatch"]), 1)
+        self.assertIsInstance(csr["firstBatch"][0], bytes)
+
+        listener.results.clear()
+
+        # Next raw batch of 4 documents.
+        next(cursor)
+        try:
+            results = listener.results
+            started = results['started'][0]
+            succeeded = results['succeeded'][0]
+            self.assertEqual(0, len(results['failed']))
+            self.assertEqual('getMore', started.command_name)
+            self.assertEqual('pymongo_test', started.database_name)
+            self.assertEqual('getMore', succeeded.command_name)
+            csr = succeeded.reply["cursor"]
+            self.assertEqual(csr["ns"], "pymongo_test.test")
+            self.assertEqual(len(csr["nextBatch"]), 1)
+            self.assertIsInstance(csr["nextBatch"][0], bytes)
+        finally:
+            # Finish the cursor.
+            tuple(cursor)
 
 
 if __name__ == "__main__":

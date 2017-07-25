@@ -9,6 +9,8 @@ Highlights:
 - Increase the performance of
   :meth:`~pymongo.mongo_client.MongoClient.database_names` by using the
   `nameOnly` option for listDatabases when available.
+- New :meth:`~pymongo.collection.Collection.find` option `raw_batches` for use
+  with external libraries that can parse raw batches of BSON data.
 
 Changes and Deprecations:
 
